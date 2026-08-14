@@ -22,6 +22,13 @@ export async function exchangeCode(code: string) {
   return payload;
 }
 
+export async function googleUserInfo(accessToken: string) {
+  const response = await fetch('https://openidconnect.googleapis.com/v1/userinfo', { headers: { Authorization: `Bearer ${accessToken}` } });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error_description || 'Google profile lookup failed');
+  return payload;
+}
+
 export async function getAccessToken(supabase: any, connection: any) {
   const refreshToken = await decrypt(connection.refresh_token_encrypted);
   const config = googleConfig();

@@ -24,9 +24,11 @@ Deno.serve(async (req) => {
         if (result.syncExpired) { await supabase.from('calendar_sources').update({ sync_token: null }).eq('id', source.id); pageToken = ''; nextSyncToken = null; source.sync_token = null; continue; }
         for (const item of result.items || []) {
           if (item.status === 'cancelled') { await supabase.from('events').delete().eq('household_id', household_id).eq('source', 'google_calendar').eq('external_id', item.id); continue; }
-          const start = item.start?.dateTime || `${item.start?.date}T00:00:00Z`;
-          const end = item.end?.dateTime || (item.end?.date ? `${item.end.date}T00:00:00Z` : null);
-          await supabase.from('events').upsert({ household_id, external_id: item.id, source: 'google_calendar', title: item.summary || '(untitled)', starts_at: start, ends_at: end, location: item.location || null, person: 'Everyone', color: calendar.backgroundColor || '#6d7b70', updated_at: new Date().toISOString() }, { onConflict: 'household_id,source,external_id' });
+          const allDay = Boolean(item.start?.date);
+          const start = item.start?.dateTime || `${item.start?.date}T12:00:00Z`;
+          const end = item.end?.dateTime || (item.end?.date ? `${item.end.date}T12:00:00Z` : null);
+          const { error: eventError } = await supabase.from('events').upsert({ household_id, external_id: item.id, source: 'google_calendar', title: item.summary || '(untitled)', starts_at: start, ends_at: end, all_day: allDay, location: item.location || null, person: 'Everyone', color: calendar.backgroundColor || '#6d7b70', updated_at: new Date().toISOString() }, { onConflict: 'household_id,source,external_id' });
+          if (eventError) throw eventError;
           imported += 1;
         }
         pageToken = result.nextPageToken || ''; nextSyncToken = result.nextSyncToken || nextSyncToken;
