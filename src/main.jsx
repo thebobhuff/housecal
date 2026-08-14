@@ -77,6 +77,7 @@ function App() {
   const [done, setDone] = useState([]);
   const [toast, setToast] = useState('');
   const [photosPickerUrl, setPhotosPickerUrl] = useState('');
+  const [photosSession, setPhotosSession] = useState(null);
   const [scene, setScene] = useState(0);
   const [pairingCode, setPairingCode] = useState('');
   const currentWeek = getWeekDays();
@@ -154,15 +155,9 @@ function App() {
       const householdId = picker.household_id || access.household?.id;
       if (!householdId) throw new Error('Household access is still loading. Try again.');
       localStorage.setItem('housecal_photos_session', JSON.stringify({ householdId, sessionId: picker.session_id }));
+      setPhotosSession({ householdId, sessionId: picker.session_id });
       setPhotosPickerUrl(picker.picker_uri);
       setToast('Google Photos is ready');
-      const interval = setInterval(async () => {
-        try {
-          const result = await pollGooglePhotosPicker(householdId, picker.session_id);
-          if (result.ready) { clearInterval(interval); localStorage.removeItem('housecal_photos_session'); setToast(result.imported ? `Imported ${result.imported} photos` : 'No photos were selected'); const liveState = await loadHousecalState({ householdId }); setPhotos((liveState.photos || []).map((photo) => photo.url)); }
-        } catch (error) { clearInterval(interval); localStorage.removeItem('housecal_photos_session'); setToast(error.message || 'Photo import failed'); }
-      }, 4000);
-      setTimeout(() => clearInterval(interval), 12 * 60 * 1000);
     } catch (error) { setToast(error.message || 'Connect Google Photos first'); }
   };
   useEffect(() => {
@@ -170,24 +165,48 @@ function App() {
     let saved;
     try { saved = JSON.parse(localStorage.getItem('housecal_photos_session') || 'null'); } catch { saved = null; }
     if (!saved || saved.householdId !== access.household.id) return undefined;
+    setPhotosSession((current) => current || { householdId: saved.householdId, sessionId: saved.sessionId });
+    return undefined;
+  }, [access.household?.id, access.session]);
+  useEffect(() => {
+    if (!photosSession) return undefined;
     let stopped = false;
-    const resume = async () => {
+    let polling = false;
+    const poll = async () => {
+      if (stopped || polling) return;
+      polling = true;
       try {
-        const result = await pollGooglePhotosPicker(access.household.id, saved.sessionId);
-        if (stopped) return;
-        if (result.ready) {
+        const result = await pollGooglePhotosPicker(photosSession.householdId, photosSession.sessionId);
+        if (!stopped && result.ready) {
           localStorage.removeItem('housecal_photos_session');
-          const liveState = await loadHousecalState({ householdId: access.household.id });
+          setPhotosSession(null);
+          const liveState = await loadHousecalState({ householdId: photosSession.householdId });
           setPhotos((liveState.photos || []).map((photo) => photo.url));
+          setPhotosPickerUrl('');
           setToast(result.imported ? `Imported ${result.imported} photos` : 'No photos were selected');
         }
-      } catch (error) { if (!stopped) { localStorage.removeItem('housecal_photos_session'); setToast(error.message || 'Photo import failed'); } }
+      } catch (error) {
+        if (!stopped) {
+          localStorage.removeItem('housecal_photos_session');
+          setPhotosSession(null);
+          setPhotosPickerUrl('');
+          setToast(error.message || 'Photo import failed. Start a new picker session.');
+        }
+      } finally { polling = false; }
     };
-    resume();
-    const interval = setInterval(resume, 4000);
-    const timeout = setTimeout(() => clearInterval(interval), 12 * 60 * 1000);
+    poll();
+    const interval = setInterval(poll, 5000);
+    const timeout = setTimeout(() => {
+      clearInterval(interval);
+      if (!stopped) {
+        localStorage.removeItem('housecal_photos_session');
+        setPhotosSession(null);
+        setPhotosPickerUrl('');
+        setToast('Google Photos session expired. Start a new picker session.');
+      }
+    }, 12 * 60 * 1000);
     return () => { stopped = true; clearInterval(interval); clearTimeout(timeout); };
-  }, [access.household?.id, access.session]);
+  }, [photosSession]);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('google') === 'connected') {

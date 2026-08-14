@@ -29,6 +29,7 @@ Deno.serve(async (req) => {
       mediaItems.push(...(mediaPayload.mediaItems || []));
       pageToken = mediaPayload.nextPageToken || '';
     } while (pageToken);
+    if (!mediaItems.length) return json({ ready: false, selected: 0, polling_config: session.pollingConfig });
     let imported = 0;
     for (const item of mediaItems) {
       const media = item.mediaFile || {};
