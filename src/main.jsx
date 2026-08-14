@@ -76,6 +76,7 @@ function App() {
   const [showMenu, setShowMenu] = useState(false);
   const [done, setDone] = useState([]);
   const [toast, setToast] = useState('');
+  const [photosPickerUrl, setPhotosPickerUrl] = useState('');
   const [scene, setScene] = useState(0);
   const [pairingCode, setPairingCode] = useState('');
   const currentWeek = getWeekDays();
@@ -148,13 +149,11 @@ function App() {
     try { const result = await startGoogleConnection(provider, access.household.id); window.location.assign(result.auth_url); } catch (error) { setToast(error.message || `Unable to connect Google ${provider}`); }
   };
   const openPhotosPicker = async () => {
-    const pickerWindow = window.open('about:blank', '_blank', 'noopener,noreferrer');
-    if (!pickerWindow) return setToast('Allow pop-ups to open Google Photos');
     try {
       const picker = await startGooglePhotosPicker(access.household?.id);
-      pickerWindow.location.href = picker.picker_uri;
       localStorage.setItem('housecal_photos_session', JSON.stringify({ householdId: access.household.id, sessionId: picker.session_id }));
-      setToast('Choose photos in the Google Photos tab');
+      setPhotosPickerUrl(picker.picker_uri);
+      setToast('Google Photos is ready');
       const interval = setInterval(async () => {
         try {
           const result = await pollGooglePhotosPicker(access.household.id, picker.session_id);
@@ -162,7 +161,7 @@ function App() {
         } catch (error) { clearInterval(interval); localStorage.removeItem('housecal_photos_session'); setToast(error.message || 'Photo import failed'); }
       }, 4000);
       setTimeout(() => clearInterval(interval), 12 * 60 * 1000);
-    } catch (error) { pickerWindow.close(); setToast(error.message || 'Connect Google Photos first'); }
+    } catch (error) { setToast(error.message || 'Connect Google Photos first'); }
   };
   useEffect(() => {
     if (!access.household?.id || !access.session) return undefined;
@@ -215,7 +214,7 @@ function App() {
       {scene === 3 && <RoutinesScene done={done} completeChore={completeChore} setToast={setToast}/>} 
       <SceneDock scene={scene} setScene={setScene}/>
     </main>
-    {showModal && <AddEventModal onClose={() => setShowModal(false)} onAdd={addEvent}/>} {pairingCode && <PairingModal code={pairingCode} onClose={() => setPairingCode('')}/>} {toast && <div className="toast">{toast}</div>}
+    {showModal && <AddEventModal onClose={() => setShowModal(false)} onAdd={addEvent}/>} {pairingCode && <PairingModal code={pairingCode} onClose={() => setPairingCode('')}/>} {toast && <div className="toast">{toast}{photosPickerUrl && <a href={photosPickerUrl} target="_blank" rel="noreferrer" onClick={() => setPhotosPickerUrl('')}>Open Google Photos</a>}</div>}
   </div>;
 }
 
