@@ -185,7 +185,7 @@ function App() {
 
     <main className={`scene-main scene-${scene}`}>
       {scene === 0 && <CalendarScene view={view} setView={setView} week={currentWeek} todayLabel={formatToday()} family={family} activeFilter={activeFilter} setActiveFilter={setActiveFilter} filteredEvents={filteredEvents} setShowModal={setShowModal} setToast={setToast} openPhotosPicker={openPhotosPicker} done={done} completeChore={completeChore}/>}
-      {scene === 1 && <PhotoScene setToast={setToast} photos={photos}/>}
+      {scene === 1 && <PhotoScene setToast={setToast} photos={photos} openPhotosPicker={openPhotosPicker}/>}
       {scene === 2 && <WeekScene events={events} family={family} week={currentWeek}/>}
       {scene === 3 && <RoutinesScene done={done} completeChore={completeChore} setToast={setToast}/>} 
       <SceneDock scene={scene} setScene={setScene}/>
@@ -209,7 +209,7 @@ const photoImages = [
   'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=1920&q=85',
 ];
 
-function PhotoScene({ setToast, photos }) {
+function PhotoScene({ setToast, photos, openPhotosPicker }) {
   const [layout, setLayout] = useState(() => Math.floor(Math.random() * 4));
   const [imageIndex, setImageIndex] = useState(() => Math.floor(Math.random() * photoImages.length));
   useEffect(() => {
@@ -226,7 +226,7 @@ function PhotoScene({ setToast, photos }) {
     <div className="photo-layer photo-layer-main" style={{ backgroundImage: `linear-gradient(90deg,#182b27a8 0%,#182b2738 45%,#182b2715 100%), url('${image}')` }}></div>
     {(layout === 1 || layout === 3) && <div className="photo-layer photo-layer-secondary" style={{ backgroundImage: `linear-gradient(160deg,#2c493b44,#17231e66), url('${secondImage}')` }}></div>}
     {layout === 2 && <div className="photo-filmstrip"><div style={{ backgroundImage: `url('${secondImage}')` }}></div><div style={{ backgroundImage: `url('${image}')` }}></div><div style={{ backgroundImage: `url('${availableImages[(imageIndex + 2) % availableImages.length]}')` }}></div></div>}
-    <div className="photo-scene-overlay"><div className="photo-scene-top"><span><Image size={17}/> FAMILY ALBUM · SUMMER 2026</span><span>68° · CHICAGO</span></div><div className="photo-scene-caption"><p>{layout === 3 ? <>Together is<br/><em>our favorite place.</em></> : <>Little moments,<br/><em>always close by.</em></>}</p><small>Sunday afternoon at the lake · 2026</small></div><button onClick={() => setToast('Photo albums will sync from Google Photos')}>Open family album <ArrowRight size={16}/></button></div>
+    <div className="photo-scene-overlay"><div className="photo-scene-top"><span><Image size={17}/> FAMILY ALBUM · SUMMER 2026</span><span>68° · CHICAGO</span></div><div className="photo-scene-caption"><p>{layout === 3 ? <>Together is<br/><em>our favorite place.</em></> : <>Little moments,<br/><em>always close by.</em></>}</p><small>Sunday afternoon at the lake · 2026</small></div><button onClick={openPhotosPicker}>Open family album <ArrowRight size={16}/></button></div>
   </div>;
 }
 
