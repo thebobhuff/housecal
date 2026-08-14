@@ -7,8 +7,12 @@ Deno.serve(async (req) => {
   try {
     const { supabase, user } = await requireUser(req);
     const { household_id, session_id } = await req.json();
-    await assertMember(supabase, user.id, household_id);
-    const { accessToken } = await connectedGoogle(supabase, household_id, 'photos');
+    let { data: member } = await supabase.from('household_members').select('household_id').eq('user_id', user.id).eq('household_id', household_id).maybeSingle();
+    if (!member) ({ data: member } = await supabase.from('household_members').select('household_id').eq('user_id', user.id).order('created_at').limit(1).maybeSingle());
+    const targetHousehold = member?.household_id;
+    if (!targetHousehold) throw new Error('Not a household member');
+    await assertMember(supabase, user.id, targetHousehold);
+    const { accessToken } = await connectedGoogle(supabase, targetHousehold, 'photos');
     const sessionResponse = await fetch(`https://photospicker.googleapis.com/v1/sessions/${encodeURIComponent(session_id)}`, { headers: { Authorization: `Bearer ${accessToken}` } });
     const session = await sessionResponse.json();
     if (!sessionResponse.ok) throw new Error(session.error?.message || 'Unable to read Photos Picker session');
@@ -34,10 +38,10 @@ Deno.serve(async (req) => {
       if (!imageResponse.ok) throw new Error(`Unable to download selected photo (${imageResponse.status})`);
       const bytes = new Uint8Array(await imageResponse.arrayBuffer());
       const extension = (media.mimeType || 'image/jpeg').split('/')[1] || 'jpg';
-      const storagePath = `${household_id}/${item.id}.${extension}`;
+      const storagePath = `${targetHousehold}/${item.id}.${extension}`;
       const upload = await supabase.storage.from('housecal-photos').upload(storagePath, bytes, { contentType: media.mimeType || 'image/jpeg', upsert: true });
       if (upload.error) throw upload.error;
-      const { error: selectionError } = await supabase.from('photo_selections').upsert({ household_id, google_media_id: item.id, storage_path: storagePath, caption: media.filename || null, width: media.mediaFileMetadata?.width || null, height: media.mediaFileMetadata?.height || null }, { onConflict: 'household_id,google_media_id' });
+      const { error: selectionError } = await supabase.from('photo_selections').upsert({ household_id: targetHousehold, google_media_id: item.id, storage_path: storagePath, caption: media.filename || null, width: media.mediaFileMetadata?.width || null, height: media.mediaFileMetadata?.height || null }, { onConflict: 'household_id,google_media_id' });
       if (selectionError) throw selectionError;
       imported += 1;
     }
