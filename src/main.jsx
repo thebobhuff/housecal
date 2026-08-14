@@ -151,13 +151,15 @@ function App() {
   const openPhotosPicker = async () => {
     try {
       const picker = await startGooglePhotosPicker(access.household?.id);
-      localStorage.setItem('housecal_photos_session', JSON.stringify({ householdId: access.household.id, sessionId: picker.session_id }));
+      const householdId = picker.household_id || access.household?.id;
+      if (!householdId) throw new Error('Household access is still loading. Try again.');
+      localStorage.setItem('housecal_photos_session', JSON.stringify({ householdId, sessionId: picker.session_id }));
       setPhotosPickerUrl(picker.picker_uri);
       setToast('Google Photos is ready');
       const interval = setInterval(async () => {
         try {
-          const result = await pollGooglePhotosPicker(access.household.id, picker.session_id);
-          if (result.ready) { clearInterval(interval); localStorage.removeItem('housecal_photos_session'); setToast(result.imported ? `Imported ${result.imported} photos` : 'No photos were selected'); const liveState = await loadHousecalState({ householdId: access.household.id }); setPhotos((liveState.photos || []).map((photo) => photo.url)); }
+          const result = await pollGooglePhotosPicker(householdId, picker.session_id);
+          if (result.ready) { clearInterval(interval); localStorage.removeItem('housecal_photos_session'); setToast(result.imported ? `Imported ${result.imported} photos` : 'No photos were selected'); const liveState = await loadHousecalState({ householdId }); setPhotos((liveState.photos || []).map((photo) => photo.url)); }
         } catch (error) { clearInterval(interval); localStorage.removeItem('housecal_photos_session'); setToast(error.message || 'Photo import failed'); }
       }, 4000);
       setTimeout(() => clearInterval(interval), 12 * 60 * 1000);
