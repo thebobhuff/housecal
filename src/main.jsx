@@ -153,16 +153,40 @@ function App() {
     try {
       const picker = await startGooglePhotosPicker(access.household?.id);
       pickerWindow.location.href = picker.picker_uri;
+      localStorage.setItem('housecal_photos_session', JSON.stringify({ householdId: access.household.id, sessionId: picker.session_id }));
       setToast('Choose photos in the Google Photos tab');
       const interval = setInterval(async () => {
         try {
           const result = await pollGooglePhotosPicker(access.household.id, picker.session_id);
-          if (result.ready) { clearInterval(interval); setToast(result.imported ? `Imported ${result.imported} photos` : 'No photos were selected'); const liveState = await loadHousecalState({ householdId: access.household.id }); setPhotos((liveState.photos || []).map((photo) => photo.url)); }
-        } catch { clearInterval(interval); }
+          if (result.ready) { clearInterval(interval); localStorage.removeItem('housecal_photos_session'); setToast(result.imported ? `Imported ${result.imported} photos` : 'No photos were selected'); const liveState = await loadHousecalState({ householdId: access.household.id }); setPhotos((liveState.photos || []).map((photo) => photo.url)); }
+        } catch (error) { clearInterval(interval); localStorage.removeItem('housecal_photos_session'); setToast(error.message || 'Photo import failed'); }
       }, 4000);
       setTimeout(() => clearInterval(interval), 12 * 60 * 1000);
     } catch (error) { pickerWindow.close(); setToast(error.message || 'Connect Google Photos first'); }
   };
+  useEffect(() => {
+    if (!access.household?.id || !access.session) return undefined;
+    let saved;
+    try { saved = JSON.parse(localStorage.getItem('housecal_photos_session') || 'null'); } catch { saved = null; }
+    if (!saved || saved.householdId !== access.household.id) return undefined;
+    let stopped = false;
+    const resume = async () => {
+      try {
+        const result = await pollGooglePhotosPicker(access.household.id, saved.sessionId);
+        if (stopped) return;
+        if (result.ready) {
+          localStorage.removeItem('housecal_photos_session');
+          const liveState = await loadHousecalState({ householdId: access.household.id });
+          setPhotos((liveState.photos || []).map((photo) => photo.url));
+          setToast(result.imported ? `Imported ${result.imported} photos` : 'No photos were selected');
+        }
+      } catch (error) { if (!stopped) { localStorage.removeItem('housecal_photos_session'); setToast(error.message || 'Photo import failed'); } }
+    };
+    resume();
+    const interval = setInterval(resume, 4000);
+    const timeout = setTimeout(() => clearInterval(interval), 12 * 60 * 1000);
+    return () => { stopped = true; clearInterval(interval); clearTimeout(timeout); };
+  }, [access.household?.id, access.session]);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('google') === 'connected') {
