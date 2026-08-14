@@ -35,3 +35,14 @@ Open the local URL in a browser. For a Fire TV proof of concept, host the built 
 5. Package the display for Fire TV as a signed Android TV APK or ship it as a secure hosted web app, depending on the desired installation path.
 
 The Google Calendar and Google Photos labels in the menu are intentionally marked as “coming next” until OAuth credentials and a backend are configured.
+
+## Vercel environment variables
+
+The Vite build accepts these Vercel variables and embeds them into the browser bundle at build time:
+
+```text
+SUPABASE_URL
+SUPABASE_PUBLISHABLE_KEY
+```
+
+The publishable key is safe for browser use when Row Level Security is enabled. Never add a Supabase secret or service-role key to Vercel variables exposed to the client.
