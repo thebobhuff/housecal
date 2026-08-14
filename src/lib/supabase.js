@@ -5,7 +5,7 @@ const supabasePublishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 const supabaseConfigured = Boolean(supabaseUrl && supabasePublishableKey);
 
 if (!supabaseUrl || !supabasePublishableKey) {
-  console.warn('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY to .env.local.');
+  console.warn('Supabase is not configured. Add SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY to the deployment environment.');
 }
 
 export const supabase = createClient(
@@ -28,7 +28,7 @@ export async function getCurrentSession() {
 
 export async function signInWithGoogle() {
   if (!supabaseConfigured) {
-    return { data: null, error: new Error('Supabase is not configured for this deployment. Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in Vercel, then redeploy.') };
+    return { data: null, error: new Error('Supabase is not configured for this deployment. Add SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY in Vercel, then redeploy.') };
   }
   return supabase.auth.signInWithOAuth({
     provider: 'google',
@@ -76,4 +76,31 @@ export async function validateDisplaySession() {
     return null;
   }
   return data[0];
+}
+
+async function invokeFunction(name, body) {
+  const { data, error } = await supabase.functions.invoke(name, { body });
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+export async function startGoogleConnection(provider, householdId) {
+  return invokeFunction('google-connect-start', { provider, household_id: householdId });
+}
+
+export async function syncGoogleCalendar(householdId) {
+  return invokeFunction('google-calendar-sync', { household_id: householdId });
+}
+
+export async function startGooglePhotosPicker(householdId) {
+  return invokeFunction('google-photos-start', { household_id: householdId });
+}
+
+export async function pollGooglePhotosPicker(householdId, sessionId) {
+  return invokeFunction('google-photos-poll', { household_id: householdId, session_id: sessionId });
+}
+
+export async function loadHousecalState({ householdId, displayToken } = {}) {
+  return invokeFunction('housecal-state', { household_id: householdId, display_token: displayToken });
 }

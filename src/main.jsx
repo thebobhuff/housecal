@@ -9,7 +9,7 @@ import './pairing.css';
 import './photo-display.css';
 import './dark-mode.css';
 import { AccessGate, SecurityLoading } from './components/AccessGate';
-import { createDisplayPairing, createHousehold, getCurrentSession, signOut, supabase, validateDisplaySession } from './lib/supabase';
+import { createDisplayPairing, createHousehold, getCurrentSession, loadHousecalState, pollGooglePhotosPicker, signOut, startGoogleConnection, startGooglePhotosPicker, supabase, syncGoogleCalendar, validateDisplaySession } from './lib/supabase';
 
 const family = [
   { name: 'Everyone', color: '#6d7b70', tint: '#dfe8df' },
@@ -42,10 +42,16 @@ function isNighttime() {
   return hour >= 20 || hour < 7;
 }
 
+function toDisplayEvent(event) {
+  const start = new Date(event.starts_at);
+  return { id: event.id || event.external_id, time: start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), title: event.title, person: event.person || 'Everyone', place: event.location || 'Family calendar', color: event.color || '#6d7b70', icon: event.source === 'google_calendar' ? 'calendar' : 'family' };
+}
+
 function App() {
   const [nightMode, setNightMode] = useState(isNighttime);
   const [access, setAccess] = useState({ loading: true, session: null, display: null });
   const [events, setEvents] = useState(seedEvents);
+  const [photos, setPhotos] = useState([]);
   const [activeFilter, setActiveFilter] = useState('Everyone');
   const [view, setView] = useState('Today');
   const [showModal, setShowModal] = useState(false);
@@ -70,6 +76,19 @@ function App() {
           } catch { /* A schema that has not been migrated yet should not break local preview. */ }
         }
       }
+      if (household) {
+        try {
+          const liveState = await loadHousecalState({ householdId: household.id });
+          if (liveState?.events?.length) setEvents(liveState.events.map(toDisplayEvent));
+          if (liveState?.photos?.length) setPhotos(liveState.photos.map((photo) => photo.url));
+        } catch { /* Keep the local preview data until the Edge Functions are deployed. */ }
+      } else if (display) {
+        try {
+          const liveState = await loadHousecalState({ displayToken: localStorage.getItem('housecal_display_token') });
+          if (liveState?.events?.length) setEvents(liveState.events.map(toDisplayEvent));
+          if (liveState?.photos?.length) setPhotos(liveState.photos.map((photo) => photo.url));
+        } catch { /* Keep the local preview data until the Edge Functions are deployed. */ }
+      }
       setAccess({ loading: false, session, display, household });
     }).catch(() => setAccess({ loading: false, session: null, display: null, household: null }));
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -93,6 +112,34 @@ function App() {
   const filteredEvents = useMemo(() => activeFilter === 'Everyone' ? events : events.filter((event) => event.person === activeFilter || event.person === 'Everyone'), [events, activeFilter]);
   const completeChore = (name) => setDone((current) => current.includes(name) ? current.filter((item) => item !== name) : [...current, name]);
   const addEvent = (event) => { setEvents((current) => [...current, { ...event, id: Date.now(), color: family.find((person) => person.name === event.person)?.color || '#6d7b70' }]); setShowModal(false); setToast('Added to the family calendar'); setTimeout(() => setToast(''), 2200); };
+  const connectGoogle = async (provider) => {
+    if (!access.session || !access.household?.id) return setToast('Parent sign-in and a household are required');
+    try { const result = await startGoogleConnection(provider, access.household.id); window.location.assign(result.auth_url); } catch (error) { setToast(error.message || `Unable to connect Google ${provider}`); }
+  };
+  const openPhotosPicker = async () => {
+    try {
+      const picker = await startGooglePhotosPicker(access.household?.id);
+      const pickerWindow = window.open(picker.picker_uri, '_blank', 'noopener,noreferrer');
+      if (!pickerWindow) return setToast('Allow pop-ups to open Google Photos');
+      setToast('Choose photos in the Google Photos tab');
+      const interval = setInterval(async () => {
+        try {
+          const result = await pollGooglePhotosPicker(access.household.id, picker.session_id);
+          if (result.ready) { clearInterval(interval); setToast(`Imported ${result.imported} photos`); const liveState = await loadHousecalState({ householdId: access.household.id }); setPhotos((liveState.photos || []).map((photo) => photo.url)); }
+        } catch { clearInterval(interval); }
+      }, 4000);
+      setTimeout(() => clearInterval(interval), 12 * 60 * 1000);
+    } catch (error) { setToast(error.message || 'Connect Google Photos first'); }
+  };
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('google') === 'connected') {
+      const provider = params.get('provider');
+      window.history.replaceState({}, '', window.location.pathname);
+      setToast(`Google ${provider === 'photos' ? 'Photos' : 'Calendar'} connected`);
+      if (provider === 'calendar' && access.household?.id) syncGoogleCalendar(access.household.id).then(async () => { const liveState = await loadHousecalState({ householdId: access.household.id }); if (liveState?.events?.length) setEvents(liveState.events.map(toDisplayEvent)); setToast('Google Calendar synced'); }).catch((error) => setToast(error.message || 'Calendar sync failed'));
+    } else if (params.get('google') === 'error') { setToast(`Google connection failed: ${params.get('reason') || 'try again'}`); window.history.replaceState({}, '', window.location.pathname); }
+  }, [access.household?.id]);
 
   if (access.loading) return <SecurityLoading />;
   if (!access.session && !access.display && !import.meta.env.DEV) return <AccessGate onPaired={(display) => setAccess({ loading: false, session: null, display })} />;
@@ -101,12 +148,12 @@ function App() {
     <header className="topbar">
       <div className="brand"><div className="brand-mark"><span></span><span></span><span></span></div><div><strong>housecal</strong><small>the family command center</small></div></div>
       <div className="topbar-right"><div className="weather">{nightMode ? <Moon size={18} strokeWidth={1.7}/> : <Sun size={18} strokeWidth={1.7}/>}<span>68°</span><small>Chicago, IL</small></div><button className="icon-button" aria-label="Notifications"><Bell size={20}/><i></i></button><button className="avatar" onClick={() => setShowMenu(!showMenu)} aria-label="Open family settings" aria-expanded={showMenu}>BH</button><button className="icon-button menu-button" onClick={() => setShowMenu(!showMenu)} aria-label="Open menu"><Menu size={22}/></button></div>
-      {showMenu && <div className="quick-menu"><button onClick={() => setToast(access.session ? 'Google Calendar sync is next' : 'Parent sign-in is required')}>Connect Google Calendar <span>→</span></button><button onClick={() => setToast(access.session ? 'Google Photos Picker is next' : 'Parent sign-in is required')}>Connect Google Photos <span>→</span></button>{access.session && <button onClick={async () => { try { const result = await createDisplayPairing(access.household?.id); setPairingCode(result?.code || ''); setShowMenu(false); } catch (error) { setToast(error.message || 'Create a pairing code after applying the Supabase migration'); } }}>Pair a Display <span>→</span></button>}<button onClick={() => setToast(access.session ? `Household: ${access.household?.name || 'Our family'}` : 'Local preview mode')}>Display settings <span>→</span></button>{access.session && <button onClick={async () => { await signOut(); setShowMenu(false); }}>Sign out <span>↗</span></button>}</div>}
+      {showMenu && <div className="quick-menu"><button onClick={() => connectGoogle('calendar')}>Connect Google Calendar <span>→</span></button><button onClick={() => connectGoogle('photos')}>Connect Google Photos <span>→</span></button>{access.session && <button onClick={async () => { try { const result = await createDisplayPairing(access.household?.id); setPairingCode(result?.code || ''); setShowMenu(false); } catch (error) { setToast(error.message || 'Create a pairing code after applying the Supabase migration'); } }}>Pair a Display <span>→</span></button>}<button onClick={() => setToast(access.session ? `Household: ${access.household?.name || 'Our family'}` : 'Local preview mode')}>Display settings <span>→</span></button>{access.session && <button onClick={async () => { await signOut(); setShowMenu(false); }}>Sign out <span>↗</span></button>}</div>}
     </header>
 
     <main className={`scene-main scene-${scene}`}>
-      {scene === 0 && <CalendarScene view={view} setView={setView} week={week} family={family} activeFilter={activeFilter} setActiveFilter={setActiveFilter} filteredEvents={filteredEvents} setShowModal={setShowModal} setToast={setToast} done={done} completeChore={completeChore}/>} 
-      {scene === 1 && <PhotoScene setToast={setToast}/>} 
+      {scene === 0 && <CalendarScene view={view} setView={setView} week={week} family={family} activeFilter={activeFilter} setActiveFilter={setActiveFilter} filteredEvents={filteredEvents} setShowModal={setShowModal} setToast={setToast} openPhotosPicker={openPhotosPicker} done={done} completeChore={completeChore}/>}
+      {scene === 1 && <PhotoScene setToast={setToast} photos={photos}/>}
       {scene === 2 && <WeekScene events={events} family={family}/>} 
       {scene === 3 && <RoutinesScene done={done} completeChore={completeChore} setToast={setToast}/>} 
       <SceneDock scene={scene} setScene={setScene}/>
@@ -115,11 +162,11 @@ function App() {
   </div>;
 }
 
-function CalendarScene({ view, setView, week, family, activeFilter, setActiveFilter, filteredEvents, setShowModal, setToast, done, completeChore }) { return <div className="scene-content calendar-scene">
+function CalendarScene({ view, setView, week, family, activeFilter, setActiveFilter, filteredEvents, setShowModal, setToast, openPhotosPicker, done, completeChore }) { return <div className="scene-content calendar-scene">
   <section className="welcome-row"><div><p className="eyebrow">SATURDAY, AUGUST 15, 2026</p><h1>Good morning, family.</h1><p className="subhead">Here’s what’s happening around the house.</p></div><div className="view-switcher">{['Today', 'Week', 'Month'].map((item) => <button className={view === item ? 'selected' : ''} key={item} onClick={() => setView(item)}>{item}</button>)}</div></section>
   <section className="week-strip"><button className="week-arrow"><ArrowLeft size={18}/></button>{week.map((item) => <button key={item.date} className={`day-card ${item.active ? 'current' : ''}`} onClick={() => setToast(item.active ? 'You are viewing today' : `${item.day}, August ${item.date}`)}><span>{item.day}</span><strong>{item.date}</strong>{item.active && <i></i>}</button>)}<button className="week-arrow"><ArrowRight size={18}/></button></section>
   <div className="family-filters">{family.map((person) => <button key={person.name} className={activeFilter === person.name ? 'active' : ''} onClick={() => setActiveFilter(person.name)}><span style={{ background: person.color }}></span>{person.name}</button>)}<button className="manage-family" onClick={() => setToast('Family profiles are ready for Google account linking')}><Settings2 size={16}/> Manage family</button></div>
-  <section className="content-grid"><div className="schedule-card panel"><div className="panel-heading"><div><p className="eyebrow">TODAY AT A GLANCE</p><h2>{view === 'Today' ? 'Saturday, August 15' : `${view} view`}</h2></div><button className="add-button" onClick={() => setShowModal(true)}><Plus size={18}/> Add event</button></div><div className="timeline">{filteredEvents.map((event) => <div className="event-row" key={event.id}><div className="event-time">{event.time}</div><div className="event-line"><span style={{ background: event.color }}></span></div><div className="event-info"><div><h3>{event.title}</h3><p>{event.place} <span>·</span> {event.person}</p></div><div className="event-badge" style={{ color: event.color, background: `${event.color}18` }}>{event.icon === 'dinner' ? 'Dinner' : event.icon === 'ball' ? 'Activity' : 'Family'}</div></div></div>)}</div><div className="sync-row"><span className="sync-dot"></span> Synced with Google Calendar <span className="sync-time">just now</span></div></div><div className="right-column"><section className="photo-card panel"><div className="photo-content"><div className="photo-topline"><span><Image size={15}/> FAMILY PHOTOS</span><button onClick={() => setToast('Photo albums will sync from Google Photos')}>View album <ArrowRight size={15}/></button></div><div className="photo-copy"><p>Little moments,<br/><em>always close by.</em></p><small>Now showing · Summer 2026</small></div><div className="photo-dots"><i></i><i className="active"></i><i></i><i></i></div></div></section><div className="small-panels"><section className="mini-card panel"><div className="mini-heading"><div className="mini-icon meal"><UtensilsCrossed size={17}/></div><div><p className="eyebrow">TONIGHT</p><h3>Dinner plan</h3></div><ChevronDown size={17}/></div><div className="meal-line"><strong>Sheet-pan salmon</strong><span>with roasted vegetables</span></div><button className="text-action" onClick={() => setToast('Meal planner opened')}>View this week <ArrowRight size={15}/></button></section><section className="mini-card panel"><div className="mini-heading"><div className="mini-icon chores"><ListChecks size={17}/></div><div><p className="eyebrow">ROUTINES</p><h3>Little wins</h3></div><span className="count">{done.length}/3</span></div>{['Pack soccer bag', 'Feed the dog', 'Put away laundry'].map((chore) => <button className={`chore ${done.includes(chore) ? 'completed' : ''}`} key={chore} onClick={() => completeChore(chore)}><span>{done.includes(chore) ? <Check size={13}/> : null}</span>{chore}<b>{done.includes(chore) ? 'Done' : 'Today'}</b></button>)}</section></div></div></section>
+  <section className="content-grid"><div className="schedule-card panel"><div className="panel-heading"><div><p className="eyebrow">TODAY AT A GLANCE</p><h2>{view === 'Today' ? 'Saturday, August 15' : `${view} view`}</h2></div><button className="add-button" onClick={() => setShowModal(true)}><Plus size={18}/> Add event</button></div><div className="timeline">{filteredEvents.map((event) => <div className="event-row" key={event.id}><div className="event-time">{event.time}</div><div className="event-line"><span style={{ background: event.color }}></span></div><div className="event-info"><div><h3>{event.title}</h3><p>{event.place} <span>·</span> {event.person}</p></div><div className="event-badge" style={{ color: event.color, background: `${event.color}18` }}>{event.icon === 'dinner' ? 'Dinner' : event.icon === 'ball' ? 'Activity' : 'Family'}</div></div></div>)}</div><div className="sync-row"><span className="sync-dot"></span> Synced with Google Calendar <span className="sync-time">just now</span></div></div><div className="right-column"><section className="photo-card panel"><div className="photo-content"><div className="photo-topline"><span><Image size={15}/> FAMILY PHOTOS</span><button onClick={openPhotosPicker}>View album <ArrowRight size={15}/></button></div><div className="photo-copy"><p>Little moments,<br/><em>always close by.</em></p><small>Now showing · Summer 2026</small></div><div className="photo-dots"><i></i><i className="active"></i><i></i><i></i></div></div></section><div className="small-panels"><section className="mini-card panel"><div className="mini-heading"><div className="mini-icon meal"><UtensilsCrossed size={17}/></div><div><p className="eyebrow">TONIGHT</p><h3>Dinner plan</h3></div><ChevronDown size={17}/></div><div className="meal-line"><strong>Sheet-pan salmon</strong><span>with roasted vegetables</span></div><button className="text-action" onClick={() => setToast('Meal planner opened')}>View this week <ArrowRight size={15}/></button></section><section className="mini-card panel"><div className="mini-heading"><div className="mini-icon chores"><ListChecks size={17}/></div><div><p className="eyebrow">ROUTINES</p><h3>Little wins</h3></div><span className="count">{done.length}/3</span></div>{['Pack soccer bag', 'Feed the dog', 'Put away laundry'].map((chore) => <button className={`chore ${done.includes(chore) ? 'completed' : ''}`} key={chore} onClick={() => completeChore(chore)}><span>{done.includes(chore) ? <Check size={13}/> : null}</span>{chore}<b>{done.includes(chore) ? 'Done' : 'Today'}</b></button>)}</section></div></div></section>
   <section className="bottom-bar"><div><LockKeyhole size={15}/> Parent mode is on</div><span>Tap the lock icon on any device to edit</span><button onClick={() => setToast('Display is set to stay awake during the day')}><CloudSun size={16}/> Display awake <span className="toggle on"><i></i></span></button></section>
 </div> }
 
@@ -130,7 +177,7 @@ const photoImages = [
   'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=1920&q=85',
 ];
 
-function PhotoScene({ setToast }) {
+function PhotoScene({ setToast, photos }) {
   const [layout, setLayout] = useState(() => Math.floor(Math.random() * 4));
   const [imageIndex, setImageIndex] = useState(() => Math.floor(Math.random() * photoImages.length));
   useEffect(() => {
@@ -140,12 +187,13 @@ function PhotoScene({ setToast }) {
     }, 28000);
     return () => clearInterval(timer);
   }, []);
-  const image = photoImages[imageIndex];
-  const secondImage = photoImages[(imageIndex + 1) % photoImages.length];
+  const availableImages = photos.length ? photos : photoImages;
+  const image = availableImages[imageIndex % availableImages.length];
+  const secondImage = availableImages[(imageIndex + 1) % availableImages.length];
   return <div className={`photo-scene randomized-photo-scene layout-${layout}`} key={`${layout}-${imageIndex}`}>
     <div className="photo-layer photo-layer-main" style={{ backgroundImage: `linear-gradient(90deg,#182b27a8 0%,#182b2738 45%,#182b2715 100%), url('${image}')` }}></div>
     {(layout === 1 || layout === 3) && <div className="photo-layer photo-layer-secondary" style={{ backgroundImage: `linear-gradient(160deg,#2c493b44,#17231e66), url('${secondImage}')` }}></div>}
-    {layout === 2 && <div className="photo-filmstrip"><div style={{ backgroundImage: `url('${secondImage}')` }}></div><div style={{ backgroundImage: `url('${image}')` }}></div><div style={{ backgroundImage: `url('${photoImages[(imageIndex + 2) % photoImages.length]}')` }}></div></div>}
+    {layout === 2 && <div className="photo-filmstrip"><div style={{ backgroundImage: `url('${secondImage}')` }}></div><div style={{ backgroundImage: `url('${image}')` }}></div><div style={{ backgroundImage: `url('${availableImages[(imageIndex + 2) % availableImages.length]}')` }}></div></div>}
     <div className="photo-scene-overlay"><div className="photo-scene-top"><span><Image size={17}/> FAMILY ALBUM · SUMMER 2026</span><span>68° · CHICAGO</span></div><div className="photo-scene-caption"><p>{layout === 3 ? <>Together is<br/><em>our favorite place.</em></> : <>Little moments,<br/><em>always close by.</em></>}</p><small>Sunday afternoon at the lake · 2026</small></div><button onClick={() => setToast('Photo albums will sync from Google Photos')}>Open family album <ArrowRight size={16}/></button></div>
   </div>;
 }
