@@ -148,10 +148,11 @@ function App() {
     try { const result = await startGoogleConnection(provider, access.household.id); window.location.assign(result.auth_url); } catch (error) { setToast(error.message || `Unable to connect Google ${provider}`); }
   };
   const openPhotosPicker = async () => {
+    const pickerWindow = window.open('about:blank', '_blank', 'noopener,noreferrer');
+    if (!pickerWindow) return setToast('Allow pop-ups to open Google Photos');
     try {
       const picker = await startGooglePhotosPicker(access.household?.id);
-      const pickerWindow = window.open(picker.picker_uri, '_blank', 'noopener,noreferrer');
-      if (!pickerWindow) return setToast('Allow pop-ups to open Google Photos');
+      pickerWindow.location.href = picker.picker_uri;
       setToast('Choose photos in the Google Photos tab');
       const interval = setInterval(async () => {
         try {
@@ -160,7 +161,7 @@ function App() {
         } catch { clearInterval(interval); }
       }, 4000);
       setTimeout(() => clearInterval(interval), 12 * 60 * 1000);
-    } catch (error) { setToast(error.message || 'Connect Google Photos first'); }
+    } catch (error) { pickerWindow.close(); setToast(error.message || 'Connect Google Photos first'); }
   };
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
