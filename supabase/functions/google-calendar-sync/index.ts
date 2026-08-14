@@ -1,6 +1,6 @@
 import { corsHeaders, json, options } from '../_shared/cors.ts';
 import { assertMember, requireUser } from '../_shared/supabase.ts';
-import { connectedGoogle } from '../_shared/google.ts';
+import { connectedGoogle, googleUserInfo } from '../_shared/google.ts';
 
 async function googleGet(url: string, accessToken: string) { const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } }); const body = await response.json(); if (response.status === 410) return { syncExpired: true }; if (!response.ok) throw new Error(body.error?.message || 'Google Calendar request failed'); return body; }
 
@@ -10,7 +10,9 @@ Deno.serve(async (req) => {
     const { supabase, user } = await requireUser(req);
     const { household_id } = await req.json();
     await assertMember(supabase, user.id, household_id);
-    const { accessToken } = await connectedGoogle(supabase, household_id, 'calendar');
+    const { accessToken, connection } = await connectedGoogle(supabase, household_id, 'calendar');
+    const profile = await googleUserInfo(accessToken);
+    await supabase.from('google_connections').update({ profile_name: profile.name || null, profile_email: profile.email || null, profile_picture_url: profile.picture || null, updated_at: new Date().toISOString() }).eq('id', connection.id);
     const calendars = await googleGet('https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=250', accessToken);
     let imported = 0;
     for (const calendar of calendars.items || []) {
