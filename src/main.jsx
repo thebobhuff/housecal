@@ -6,6 +6,7 @@ import './wall.css';
 import './scenes.css';
 import './access.css';
 import './pairing.css';
+import './photo-display.css';
 import { AccessGate, SecurityLoading } from './components/AccessGate';
 import { createDisplayPairing, createHousehold, getCurrentSession, signOut, supabase, validateDisplaySession } from './lib/supabase';
 
@@ -82,7 +83,7 @@ function App() {
   if (access.loading) return <SecurityLoading />;
   if (!access.session && !access.display && !import.meta.env.DEV) return <AccessGate onPaired={(display) => setAccess({ loading: false, session: null, display })} />;
 
-  return <div className="app-shell">
+  return <div className={`app-shell ${scene === 1 ? 'photo-display-active' : ''}`}>
     <header className="topbar">
       <div className="brand"><div className="brand-mark"><span></span><span></span><span></span></div><div><strong>housecal</strong><small>the family command center</small></div></div>
       <div className="topbar-right"><div className="weather"><Sun size={18} strokeWidth={1.7}/><span>68°</span><small>Chicago, IL</small></div><button className="icon-button" aria-label="Notifications"><Bell size={20}/><i></i></button><button className="avatar" onClick={() => setShowMenu(!showMenu)} aria-label="Open family settings" aria-expanded={showMenu}>BH</button><button className="icon-button menu-button" onClick={() => setShowMenu(!showMenu)} aria-label="Open menu"><Menu size={22}/></button></div>
@@ -108,7 +109,32 @@ function CalendarScene({ view, setView, week, family, activeFilter, setActiveFil
   <section className="bottom-bar"><div><LockKeyhole size={15}/> Parent mode is on</div><span>Tap the lock icon on any device to edit</span><button onClick={() => setToast('Display is set to stay awake during the day')}><CloudSun size={16}/> Display awake <span className="toggle on"><i></i></span></button></section>
 </div> }
 
-function PhotoScene({ setToast }) { return <div className="photo-scene"><div className="photo-scene-image photo-one"><div className="photo-scene-overlay"><div className="photo-scene-top"><span><Image size={17}/> FAMILY ALBUM · SUMMER 2026</span><span>68° · CHICAGO</span></div><div className="photo-scene-caption"><p>Little moments,<br/><em>always close by.</em></p><small>Sunday afternoon at the lake · 2026</small></div><button onClick={() => setToast('Photo albums will sync from Google Photos')}>Open family album <ArrowRight size={16}/></button></div></div></div> }
+const photoImages = [
+  'https://images.unsplash.com/photo-1504150558240-0b4fd8946624?auto=format&fit=crop&w=1920&q=85',
+  'https://images.unsplash.com/photo-1511895426328-dc8714191300?auto=format&fit=crop&w=1920&q=85',
+  'https://images.unsplash.com/photo-1472162072942-cd5147eb3902?auto=format&fit=crop&w=1920&q=85',
+  'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=1920&q=85',
+];
+
+function PhotoScene({ setToast }) {
+  const [layout, setLayout] = useState(() => Math.floor(Math.random() * 4));
+  const [imageIndex, setImageIndex] = useState(() => Math.floor(Math.random() * photoImages.length));
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setLayout(Math.floor(Math.random() * 4));
+      setImageIndex(Math.floor(Math.random() * photoImages.length));
+    }, 28000);
+    return () => clearInterval(timer);
+  }, []);
+  const image = photoImages[imageIndex];
+  const secondImage = photoImages[(imageIndex + 1) % photoImages.length];
+  return <div className={`photo-scene randomized-photo-scene layout-${layout}`} key={`${layout}-${imageIndex}`}>
+    <div className="photo-layer photo-layer-main" style={{ backgroundImage: `linear-gradient(90deg,#182b27a8 0%,#182b2738 45%,#182b2715 100%), url('${image}')` }}></div>
+    {(layout === 1 || layout === 3) && <div className="photo-layer photo-layer-secondary" style={{ backgroundImage: `linear-gradient(160deg,#2c493b44,#17231e66), url('${secondImage}')` }}></div>}
+    {layout === 2 && <div className="photo-filmstrip"><div style={{ backgroundImage: `url('${secondImage}')` }}></div><div style={{ backgroundImage: `url('${image}')` }}></div><div style={{ backgroundImage: `url('${photoImages[(imageIndex + 2) % photoImages.length]}')` }}></div></div>}
+    <div className="photo-scene-overlay"><div className="photo-scene-top"><span><Image size={17}/> FAMILY ALBUM · SUMMER 2026</span><span>68° · CHICAGO</span></div><div className="photo-scene-caption"><p>{layout === 3 ? <>Together is<br/><em>our favorite place.</em></> : <>Little moments,<br/><em>always close by.</em></>}</p><small>Sunday afternoon at the lake · 2026</small></div><button onClick={() => setToast('Photo albums will sync from Google Photos')}>Open family album <ArrowRight size={16}/></button></div>
+  </div>;
+}
 
 function WeekScene({ events, family }) { return <div className="week-scene"><div className="scene-heading"><div><p className="eyebrow">THE WEEK AHEAD</p><h1>Everyone, everywhere.</h1><p className="subhead">A simple view of the next seven days.</p></div><div className="scene-date">AUG 9 — 15<br/><strong>2026</strong></div></div><div className="week-board">{['SUN 9','MON 10','TUE 11','WED 12','THU 13','FRI 14','SAT 15'].map((day, index) => <div className={`week-column ${index === 6 ? 'today' : ''}`} key={day}><div className="week-column-head">{day}</div>{index === 6 ? events.map((event) => <div className="week-event" key={event.id} style={{ borderLeftColor: event.color }}><strong>{event.time}</strong><span>{event.title}</span><small>{event.person}</small></div>) : <div className="week-empty">{index === 1 ? 'No plans yet' : index === 4 ? 'Open afternoon' : '—'}</div>}</div>)}</div><div className="scene-legend">{family.slice(1).map((person) => <span key={person.name}><i style={{ background: person.color }}></i>{person.name}</span>)}<span className="week-sync"><span className="sync-dot"></span> Google Calendar synced</span></div></div> }
 
