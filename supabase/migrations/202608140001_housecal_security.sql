@@ -69,7 +69,7 @@ $$;
 create or replace function public.create_household(household_name text default 'Our family')
 returns uuid
 language plpgsql
-security invoker
+security definer
 set search_path = public
 as $$
 declare new_household uuid;
