@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowLeft, ArrowRight, Bell, CalendarDays, Check, ChevronDown, CloudSun, Image, ListChecks, LockKeyhole, Menu, Plus, Settings2, Sun, UtensilsCrossed, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Bell, CalendarDays, Check, ChevronDown, CloudSun, Image, ListChecks, LockKeyhole, Menu, Moon, Plus, Settings2, Sun, UtensilsCrossed, X } from 'lucide-react';
 import './styles.css';
 import './wall.css';
 import './scenes.css';
 import './access.css';
 import './pairing.css';
 import './photo-display.css';
+import './dark-mode.css';
 import { AccessGate, SecurityLoading } from './components/AccessGate';
 import { createDisplayPairing, createHousehold, getCurrentSession, signOut, supabase, validateDisplaySession } from './lib/supabase';
 
@@ -36,7 +37,13 @@ const scenes = [
   { label: 'Routines', kicker: 'AROUND THE HOUSE' },
 ];
 
+function isNighttime() {
+  const hour = new Date().getHours();
+  return hour >= 20 || hour < 7;
+}
+
 function App() {
+  const [nightMode, setNightMode] = useState(isNighttime);
   const [access, setAccess] = useState({ loading: true, session: null, display: null });
   const [events, setEvents] = useState(seedEvents);
   const [activeFilter, setActiveFilter] = useState('Everyone');
@@ -72,6 +79,13 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const updateNightMode = () => setNightMode(isNighttime());
+    document.documentElement.dataset.theme = nightMode ? 'night' : 'day';
+    const timer = setInterval(updateNightMode, 60000);
+    return () => { clearInterval(timer); delete document.documentElement.dataset.theme; };
+  }, [nightMode]);
+
+  useEffect(() => {
     const timer = setInterval(() => setScene((current) => (current + 1) % scenes.length), 12000);
     return () => clearInterval(timer);
   }, []);
@@ -86,7 +100,7 @@ function App() {
   return <div className={`app-shell ${scene === 1 ? 'photo-display-active' : ''}`}>
     <header className="topbar">
       <div className="brand"><div className="brand-mark"><span></span><span></span><span></span></div><div><strong>housecal</strong><small>the family command center</small></div></div>
-      <div className="topbar-right"><div className="weather"><Sun size={18} strokeWidth={1.7}/><span>68°</span><small>Chicago, IL</small></div><button className="icon-button" aria-label="Notifications"><Bell size={20}/><i></i></button><button className="avatar" onClick={() => setShowMenu(!showMenu)} aria-label="Open family settings" aria-expanded={showMenu}>BH</button><button className="icon-button menu-button" onClick={() => setShowMenu(!showMenu)} aria-label="Open menu"><Menu size={22}/></button></div>
+      <div className="topbar-right"><div className="weather">{nightMode ? <Moon size={18} strokeWidth={1.7}/> : <Sun size={18} strokeWidth={1.7}/>}<span>68°</span><small>Chicago, IL</small></div><button className="icon-button" aria-label="Notifications"><Bell size={20}/><i></i></button><button className="avatar" onClick={() => setShowMenu(!showMenu)} aria-label="Open family settings" aria-expanded={showMenu}>BH</button><button className="icon-button menu-button" onClick={() => setShowMenu(!showMenu)} aria-label="Open menu"><Menu size={22}/></button></div>
       {showMenu && <div className="quick-menu"><button onClick={() => setToast(access.session ? 'Google Calendar sync is next' : 'Parent sign-in is required')}>Connect Google Calendar <span>→</span></button><button onClick={() => setToast(access.session ? 'Google Photos Picker is next' : 'Parent sign-in is required')}>Connect Google Photos <span>→</span></button>{access.session && <button onClick={async () => { try { const result = await createDisplayPairing(access.household?.id); setPairingCode(result?.code || ''); setShowMenu(false); } catch (error) { setToast(error.message || 'Create a pairing code after applying the Supabase migration'); } }}>Pair a Display <span>→</span></button>}<button onClick={() => setToast(access.session ? `Household: ${access.household?.name || 'Our family'}` : 'Local preview mode')}>Display settings <span>→</span></button>{access.session && <button onClick={async () => { await signOut(); setShowMenu(false); }}>Sign out <span>↗</span></button>}</div>}
     </header>
 
