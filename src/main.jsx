@@ -82,6 +82,14 @@ function App() {
           if (liveState?.events?.length) setEvents(liveState.events.map(toDisplayEvent));
           if (liveState?.photos?.length) setPhotos(liveState.photos.map((photo) => photo.url));
         } catch { /* Keep the local preview data until the Edge Functions are deployed. */ }
+        try {
+          const { data: calendarConnection } = await supabase.from('google_connections').select('provider').eq('household_id', household.id).eq('provider', 'calendar').maybeSingle();
+          if (calendarConnection) {
+            await syncGoogleCalendar(household.id);
+            const refreshedState = await loadHousecalState({ householdId: household.id });
+            if (refreshedState?.events?.length) setEvents(refreshedState.events.map(toDisplayEvent));
+          }
+        } catch { /* A missing or expired Google connection should not block the display. */ }
       } else if (display) {
         try {
           const liveState = await loadHousecalState({ displayToken: localStorage.getItem('housecal_display_token') });
