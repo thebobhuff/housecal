@@ -135,6 +135,7 @@ function App() {
     const params = new URLSearchParams(window.location.search);
     if (params.get('google') === 'connected') {
       const provider = params.get('provider');
+      if (provider === 'calendar' && !access.household?.id) return;
       window.history.replaceState({}, '', window.location.pathname);
       setToast(`Google ${provider === 'photos' ? 'Photos' : 'Calendar'} connected`);
       if (provider === 'calendar' && access.household?.id) syncGoogleCalendar(access.household.id).then(async () => { const liveState = await loadHousecalState({ householdId: access.household.id }); if (liveState?.events?.length) setEvents(liveState.events.map(toDisplayEvent)); setToast('Google Calendar synced'); }).catch((error) => setToast(error.message || 'Calendar sync failed'));
