@@ -1,0 +1,53 @@
+@media (min-width: 1600px) {
+  body { overflow: hidden; }
+  .topbar { height: 92px; padding: 0 48px; }
+  .brand strong { font-size: 24px; }
+  .brand small { font-size: 11px; }
+  .brand-mark { height: 29px; }
+  .brand-mark span { width: 6px; }
+  .brand-mark span:first-child { height: 15px; }
+  .brand-mark span:nth-child(2) { height: 23px; }
+  .brand-mark span:last-child { height: 29px; }
+  main { max-width: 1760px; padding: 42px 48px 18px; }
+  .welcome-row { margin-bottom: 25px; }
+  .welcome-row h1 { font-size: 64px; letter-spacing: -2.6px; margin-bottom: 10px; }
+  .subhead { font-size: 17px; }
+  .eyebrow { font-size: 11px; }
+  .view-switcher button { padding: 11px 20px; font-size: 13px; }
+  .week-strip { gap: 10px; margin-bottom: 17px; }
+  .day-card { padding: 14px 3px 12px; }
+  .day-card span { font-size: 11px; }
+  .day-card strong { font-size: 29px; }
+  .family-filters { gap: 10px; margin-bottom: 20px; }
+  .family-filters button { height: 36px; padding: 0 14px; font-size: 13px; }
+  .content-grid { gap: 24px; }
+  .panel { border-radius: 19px; }
+  .schedule-card { min-height: 515px; padding: 27px 32px 0; }
+  .panel-heading h2 { font-size: 29px; }
+  .add-button { padding: 13px 17px; font-size: 13px; }
+  .timeline { margin-top: 29px; }
+  .event-row { grid-template-columns: 92px 24px 1fr; min-height: 92px; }
+  .event-time { font-size: 12px; }
+  .event-info { padding-left: 16px; padding-bottom: 20px; margin-bottom: 19px; }
+  .event-info h3 { font-size: 17px; margin-bottom: 7px; }
+  .event-info p { font-size: 13px; }
+  .event-badge { height: 26px; padding: 6px 9px; font-size: 11px; }
+  .sync-row { padding: 20px 0; font-size: 12px; }
+  .right-column { gap: 24px; }
+  .photo-card { height: 280px; }
+  .photo-content { padding: 25px; }
+  .photo-topline { font-size: 11px; }
+  .photo-topline button { font-size: 12px; }
+  .photo-copy p { font-size: 38px; }
+  .photo-copy small { font-size: 12px; }
+  .small-panels { gap: 24px; }
+  .mini-card { padding: 24px 23px; }
+  .mini-heading h3 { font-size: 20px; }
+  .mini-heading { margin-bottom: 20px; }
+  .meal-line strong { font-size: 15px; }
+  .meal-line span, .text-action { font-size: 12px; }
+  .chore { font-size: 13px; padding: 7px 0; }
+  .chore b { font-size: 10px; }
+  .bottom-bar { margin-top: 24px; padding: 14px 0; font-size: 12px; }
+  .bottom-bar button { font-size: 12px; }
+}
