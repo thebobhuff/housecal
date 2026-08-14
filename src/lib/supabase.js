@@ -80,7 +80,14 @@ export async function validateDisplaySession() {
 
 async function invokeFunction(name, body) {
   const { data, error } = await supabase.functions.invoke(name, { body });
-  if (error) throw error;
+  if (error) {
+    let message = error.message;
+    try {
+      const payload = await error.context?.json();
+      if (payload?.error) message = payload.error;
+    } catch { /* Keep the SDK error when the response body is unavailable. */ }
+    throw new Error(message);
+  }
   if (data?.error) throw new Error(data.error);
   return data;
 }

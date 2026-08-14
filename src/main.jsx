@@ -89,7 +89,7 @@ function App() {
             const refreshedState = await loadHousecalState({ householdId: household.id });
             if (refreshedState?.events?.length) setEvents(refreshedState.events.map(toDisplayEvent));
           }
-        } catch { /* A missing or expired Google connection should not block the display. */ }
+          } catch (error) { setToast(error.message || 'Google Calendar sync failed'); }
       } else if (display) {
         try {
           const liveState = await loadHousecalState({ displayToken: localStorage.getItem('housecal_display_token') });
