@@ -2,14 +2,15 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabasePublishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const supabaseConfigured = Boolean(supabaseUrl && supabasePublishableKey);
 
 if (!supabaseUrl || !supabasePublishableKey) {
   console.warn('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY to .env.local.');
 }
 
 export const supabase = createClient(
-  supabaseUrl || 'https://placeholder.supabase.co',
-  supabasePublishableKey || 'sb_publishable_placeholder',
+  supabaseUrl || 'https://missing-supabase-config.invalid',
+  supabasePublishableKey || 'missing-supabase-publishable-key',
   {
     auth: {
       persistSession: true,
@@ -26,6 +27,9 @@ export async function getCurrentSession() {
 }
 
 export async function signInWithGoogle() {
+  if (!supabaseConfigured) {
+    return { data: null, error: new Error('Supabase is not configured for this deployment. Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in Vercel, then redeploy.') };
+  }
   return supabase.auth.signInWithOAuth({
     provider: 'google',
     options: { redirectTo: window.location.origin },
