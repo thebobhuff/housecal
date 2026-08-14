@@ -155,11 +155,17 @@ alter table public.events enable row level security;
 alter table public.display_pairing_codes enable row level security;
 alter table public.display_devices enable row level security;
 
+drop policy if exists "Members can view their household" on public.households;
 create policy "Members can view their household" on public.households for select to authenticated using (public.is_household_member(id));
+drop policy if exists "Members can view household membership" on public.household_members;
 create policy "Members can view household membership" on public.household_members for select to authenticated using (public.is_household_member(household_id));
+drop policy if exists "Members can view events" on public.events;
 create policy "Members can view events" on public.events for select to authenticated using (public.is_household_member(household_id));
+drop policy if exists "Parents can manage events" on public.events;
 create policy "Parents can manage events" on public.events for all to authenticated using (public.is_household_member(household_id)) with check (public.is_household_member(household_id));
+drop policy if exists "Members can view devices" on public.display_devices;
 create policy "Members can view devices" on public.display_devices for select to authenticated using (public.is_household_member(household_id));
+drop policy if exists "Members can view pairing codes" on public.display_pairing_codes;
 create policy "Members can view pairing codes" on public.display_pairing_codes for select to authenticated using (public.is_household_member(household_id));
 
 revoke all on public.households, public.household_members, public.events, public.display_pairing_codes, public.display_devices from anon;
