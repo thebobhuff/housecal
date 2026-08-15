@@ -178,3 +178,16 @@ export async function saveHouseholdName(householdId, name) {
   if (error) throw error;
   return data;
 }
+
+const familyColors = [
+  { color: '#6d7b70', tint: '#dfe8df' }, { color: '#c96f52', tint: '#f6ddd3' }, { color: '#6686a4', tint: '#dbe6f0' }, { color: '#c89b45', tint: '#f4e7bf' },
+];
+
+export async function replaceHouseholdPeople(householdId, people) {
+  const { error: deleteError } = await supabase.from('household_people').delete().eq('household_id', householdId);
+  if (deleteError) throw deleteError;
+  const rows = people.filter((person) => person.name.trim()).map((person, index) => ({ household_id: householdId, name: person.name.trim().slice(0, 60), email: person.email?.trim() || null, color: person.color || familyColors[index % familyColors.length].color, tint: person.tint || familyColors[index % familyColors.length].tint, show_on_display: person.show_on_display !== false }));
+  const { data, error } = await supabase.from('household_people').insert(rows).select().order('created_at');
+  if (error) throw error;
+  return data || [];
+}
