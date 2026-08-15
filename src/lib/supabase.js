@@ -141,3 +141,9 @@ export async function saveMealPlan(householdId, meal) {
   if (error) throw error;
   return data;
 }
+
+export async function saveHouseholdSettings(householdId, settings) {
+  const { data, error } = await supabase.from('household_settings').upsert({ household_id: householdId, ...settings, updated_at: new Date().toISOString() }).select().single();
+  if (error) throw error;
+  return data;
+}

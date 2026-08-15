@@ -14,7 +14,7 @@ import './news.css';
 import './month.css';
 import './modal.css';
 import { AccessGate, SecurityLoading } from './components/AccessGate';
-import { createDisplayPairing, createHousehold, ensureHousecalDefaults, getCurrentSession, loadHousecalState, loadLocalNews, loadTraffic, pollGooglePhotosPicker, saveMealPlan, setRoutineCompletion, signOut, startGoogleConnection, startGooglePhotosPicker, supabase, syncGoogleCalendar, validateDisplaySession } from './lib/supabase';
+import { createDisplayPairing, createHousehold, ensureHousecalDefaults, getCurrentSession, loadHousecalState, loadLocalNews, loadTraffic, pollGooglePhotosPicker, saveHouseholdSettings, saveMealPlan, setRoutineCompletion, signOut, startGoogleConnection, startGooglePhotosPicker, supabase, syncGoogleCalendar, validateDisplaySession } from './lib/supabase';
 
 const family = [
   { name: 'Everyone', color: '#6d7b70', tint: '#dfe8df' },
@@ -65,9 +65,9 @@ function weatherDescription(code) {
   return 'Current conditions';
 }
 
-function isNighttime() {
+function isNighttime(startHour = 20, endHour = 7) {
   const hour = new Date().getHours();
-  return hour >= 20 || hour < 7;
+  return startHour > endHour ? hour >= startHour || hour < endHour : hour >= startHour && hour < endHour;
 }
 
 function toDisplayEvent(event) {
@@ -94,7 +94,7 @@ function writeCachedState(householdId, state) {
 }
 
 function App() {
-  const [nightMode, setNightMode] = useState(isNighttime);
+  const [nightMode, setNightMode] = useState(() => isNighttime());
   const [access, setAccess] = useState({ loading: true, session: null, display: null });
   const [events, setEvents] = useState(seedEvents);
   const [photos, setPhotos] = useState([]);
@@ -103,6 +103,7 @@ function App() {
   const [view, setView] = useState('Today');
   const [showModal, setShowModal] = useState(false);
   const [showMealModal, setShowMealModal] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [done, setDone] = useState([]);
   const [routines, setRoutines] = useState([]);
@@ -116,6 +117,7 @@ function App() {
   const [weatherLocation, setWeatherLocation] = useState(fallbackLocation);
   const [news, setNews] = useState({ loading: true, articles: [], error: '' });
   const [traffic, setTraffic] = useState({ loading: true, configured: true, data: null, error: '' });
+  const [settings, setSettings] = useState({ scene_duration_seconds: 12, night_start_hour: 20, night_end_hour: 7 });
   const currentWeek = getWeekDays();
   const todayKey = new Date().toLocaleDateString('en-CA');
 
@@ -143,6 +145,7 @@ function App() {
           if (liveState?.routines?.length) setRoutines(liveState.routines);
           if (liveState?.routine_completions?.length) setDone((liveState.routine_completions || []).map((item) => liveState.routines?.find((routine) => routine.id === item.routine_id)?.title).filter(Boolean));
           if (liveState?.meals?.length) setMealPlan(liveState.meals[0]);
+          if (liveState?.settings) setSettings(liveState.settings);
           writeCachedState(household.id, liveState);
         } catch { const cached = readCachedState(household.id); if (cached?.events?.length) setEvents(cached.events.map(toDisplayEvent)); if (cached?.photos?.length) setPhotos(cached.photos.map((photo) => photo.url)); if (cached?.routines?.length) setRoutines(cached.routines); if (cached?.meals?.length) setMealPlan(cached.meals[0]); setToast(cached ? 'Using the last saved family update' : 'Family data is temporarily unavailable'); }
         const { data: profile } = await supabase.from('google_connections').select('profile_picture_url').eq('household_id', household.id).not('profile_picture_url', 'is', null).limit(1).maybeSingle();
@@ -163,6 +166,7 @@ function App() {
           if (liveState?.routines?.length) setRoutines(liveState.routines);
           if (liveState?.routine_completions?.length) setDone((liveState.routine_completions || []).map((item) => liveState.routines?.find((routine) => routine.id === item.routine_id)?.title).filter(Boolean));
           if (liveState?.meals?.length) setMealPlan(liveState.meals[0]);
+          if (liveState?.settings) setSettings(liveState.settings);
           writeCachedState(liveState.household_id || display.household_id, liveState);
         } catch { const cached = display?.household_id ? readCachedState(display.household_id) : null; if (cached?.events?.length) setEvents(cached.events.map(toDisplayEvent)); if (cached?.photos?.length) setPhotos(cached.photos.map((photo) => photo.url)); if (cached?.routines?.length) setRoutines(cached.routines); if (cached?.meals?.length) setMealPlan(cached.meals[0]); setToast(cached ? 'Using the last saved family update' : 'Display data is temporarily unavailable'); }
       }
@@ -203,11 +207,11 @@ function App() {
   }, [access.display, access.household?.id, weatherLocation.latitude, weatherLocation.longitude]);
 
   useEffect(() => {
-    const updateNightMode = () => setNightMode(isNighttime());
+    const updateNightMode = () => setNightMode(isNighttime(settings.night_start_hour, settings.night_end_hour));
     document.documentElement.dataset.theme = nightMode ? 'night' : 'day';
     const timer = setInterval(updateNightMode, 60000);
     return () => { clearInterval(timer); delete document.documentElement.dataset.theme; };
-  }, [nightMode]);
+  }, [nightMode, settings.night_start_hour, settings.night_end_hour]);
 
   useEffect(() => {
     let cancelled = false;
@@ -230,9 +234,9 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const timer = setInterval(() => setScene((current) => (current + 1) % scenes.length), 12000);
+    const timer = setInterval(() => setScene((current) => (current + 1) % scenes.length), (settings.scene_duration_seconds || 12) * 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [settings.scene_duration_seconds]);
 
   const dateFilteredEvents = useMemo(() => view === 'Today' ? events.filter((event) => event.dayKey === todayKey) : events, [events, todayKey, view]);
   const filteredEvents = useMemo(() => activeFilter === 'Everyone' ? dateFilteredEvents : dateFilteredEvents.filter((event) => event.person === activeFilter || event.person === 'Everyone'), [dateFilteredEvents, activeFilter]);
@@ -323,7 +327,7 @@ function App() {
     <header className="topbar">
       <div className="brand"><div className="brand-mark"><span></span><span></span><span></span></div><div><strong>housecal</strong><small>the family command center</small></div></div>
       <div className="topbar-right"><div className="weather">{nightMode ? <Moon size={18} strokeWidth={1.7}/> : <Sun size={18} strokeWidth={1.7}/>}<span>{weather.data ? `${Math.round(weather.data.temperature_2m)}°` : '--°'}</span><small>{weatherLocation.city}</small></div><button className="icon-button" aria-label="Notifications"><Bell size={20}/><i></i></button><button className="avatar" onClick={() => setShowMenu(!showMenu)} aria-label="Open family settings" aria-expanded={showMenu}>{profilePhoto ? <img src={profilePhoto} alt="Google profile"/> : 'BH'}</button><button className="icon-button menu-button" onClick={() => setShowMenu(!showMenu)} aria-label="Open menu"><Menu size={22}/></button></div>
-      {showMenu && <div className="quick-menu"><button onClick={() => connectGoogle('calendar')}>Connect Google Calendar <span>→</span></button><button onClick={() => connectGoogle('photos')}>Connect Google Photos <span>→</span></button>{access.session && <button onClick={async () => { try { const result = await createDisplayPairing(access.household?.id); setPairingCode(result?.code || ''); setShowMenu(false); } catch (error) { setToast(error.message || 'Create a pairing code after applying the Supabase migration'); } }}>Pair a Display <span>→</span></button>}<button onClick={() => setToast(access.session ? `Household: ${access.household?.name || 'Our family'}` : 'Local preview mode')}>Display settings <span>→</span></button>{access.session && <button onClick={async () => { await signOut(); setShowMenu(false); }}>Sign out <span>↗</span></button>}</div>}
+      {showMenu && <div className="quick-menu"><button onClick={() => connectGoogle('calendar')}>Connect Google Calendar <span>→</span></button><button onClick={() => connectGoogle('photos')}>Connect Google Photos <span>→</span></button>{access.session && <button onClick={async () => { try { const result = await createDisplayPairing(access.household?.id); setPairingCode(result?.code || ''); setShowMenu(false); } catch (error) { setToast(error.message || 'Create a pairing code after applying the Supabase migration'); } }}>Pair a Display <span>→</span></button>}<button onClick={() => { setShowSettings(true); setShowMenu(false); }}>Display settings <span>→</span></button>{access.session && <button onClick={async () => { await signOut(); setShowMenu(false); }}>Sign out <span>↗</span></button>}</div>}
     </header>
 
     <main className={`scene-main scene-${scene}`}>
@@ -336,7 +340,7 @@ function App() {
       {scene === 6 && <NewsScene news={news} location={weatherLocation} setToast={setToast}/>}
       <SceneDock scene={scene} setScene={setScene}/>
     </main>
-    {showModal && <AddEventModal onClose={() => setShowModal(false)} onAdd={addEvent}/>} {showMealModal && <MealModal householdId={access.household?.id} meal={mealPlan} onClose={() => setShowMealModal(false)} onSaved={(meal) => { setMealPlan(meal); setShowMealModal(false); setToast('Meal plan saved'); }}/>} {pairingCode && <PairingModal code={pairingCode} onClose={() => setPairingCode('')}/>} {toast && <div className="toast">{toast}{photosPickerUrl && <a href={photosPickerUrl} target="_blank" rel="noreferrer" onClick={() => setPhotosPickerUrl('')}>Open Google Photos</a>}</div>}
+    {showModal && <AddEventModal onClose={() => setShowModal(false)} onAdd={addEvent}/>} {showMealModal && <MealModal householdId={access.household?.id} meal={mealPlan} onClose={() => setShowMealModal(false)} onSaved={(meal) => { setMealPlan(meal); setShowMealModal(false); setToast('Meal plan saved'); }}/>} {showSettings && <SettingsModal householdId={access.household?.id} settings={settings} onClose={() => setShowSettings(false)} onSaved={(next) => { setSettings(next); setShowSettings(false); setToast('Display settings saved'); }}/>} {pairingCode && <PairingModal code={pairingCode} onClose={() => setPairingCode('')}/>} {toast && <div className="toast">{toast}{photosPickerUrl && <a href={photosPickerUrl} target="_blank" rel="noreferrer" onClick={() => setPhotosPickerUrl('')}>Open Google Photos</a>}</div>}
   </div>;
 }
 
@@ -417,5 +421,7 @@ function PairingModal({ code, onClose }) { return <div className="modal-backdrop
 function AddEventModal({ onClose, onAdd }) { const [title, setTitle] = useState(''); const [time, setTime] = useState('6:30 PM'); const [person, setPerson] = useState('Everyone'); return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="modal"><div className="modal-heading"><div><p className="eyebrow">NEW FAMILY PLAN</p><h2>Add an event</h2></div><button className="close-button" onClick={onClose}><X size={20}/></button></div><label>What’s happening?<input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Library books due"/></label><div className="form-row"><label>Time<input type="text" value={time} onChange={(event) => setTime(event.target.value)}/></label><label>For<select value={person} onChange={(event) => setPerson(event.target.value)}>{family.map((item) => <option key={item.name}>{item.name}</option>)}</select></label></div><button className="save-button" disabled={!title.trim()} onClick={() => onAdd({ title: title.trim(), time, person, place: 'Family calendar', icon: 'family' })}>Add to calendar <ArrowRight size={17}/></button></div></div> }
 
 function MealModal({ householdId, meal, onClose, onSaved }) { const [title, setTitle] = useState(meal?.title || ''); const [subtitle, setSubtitle] = useState(meal?.subtitle || ''); const [recipeUrl, setRecipeUrl] = useState(meal?.recipe_url || ''); const save = async () => { try { const result = await saveMealPlan(householdId, { meal_date: meal?.meal_date || new Date().toISOString().slice(0, 10), title: title.trim(), subtitle: subtitle.trim(), recipe_url: recipeUrl.trim() }); onSaved(result); } catch { /* Parent receives the unchanged modal if the write fails. */ } }; return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="modal"><div className="modal-heading"><div><p className="eyebrow">TONIGHT’S PLAN</p><h2>Edit meal</h2></div><button className="close-button" onClick={onClose}><X size={20}/></button></div><label>Meal name<input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Tacos"/></label><label className="modal-field-gap">Description<input value={subtitle} onChange={(event) => setSubtitle(event.target.value)} placeholder="e.g. with avocado and salsa"/></label><label className="modal-field-gap">Recipe link<input value={recipeUrl} onChange={(event) => setRecipeUrl(event.target.value)} placeholder="https://..."/></label><button className="save-button" disabled={!title.trim() || !householdId} onClick={save}>Save meal plan <Check size={17}/></button></div></div> }
+
+function SettingsModal({ householdId, settings, onClose, onSaved }) { const [duration, setDuration] = useState(settings.scene_duration_seconds || 12); const [nightStart, setNightStart] = useState(settings.night_start_hour ?? 20); const [nightEnd, setNightEnd] = useState(settings.night_end_hour ?? 7); const save = async () => { try { const result = await saveHouseholdSettings(householdId, { scene_duration_seconds: Number(duration), night_start_hour: Number(nightStart), night_end_hour: Number(nightEnd) }); onSaved(result); } catch { /* Keep the modal open when the settings write fails. */ } }; return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="modal"><div className="modal-heading"><div><p className="eyebrow">DISPLAY SETTINGS</p><h2>Make it feel like home.</h2></div><button className="close-button" onClick={onClose}><X size={20}/></button></div><label>Scene duration (seconds)<input type="number" min="5" max="180" value={duration} onChange={(event) => setDuration(event.target.value)}/></label><div className="form-row"><label>Night starts<input type="number" min="0" max="23" value={nightStart} onChange={(event) => setNightStart(event.target.value)}/></label><label>Night ends<input type="number" min="0" max="23" value={nightEnd} onChange={(event) => setNightEnd(event.target.value)}/></label></div><button className="save-button" disabled={!householdId} onClick={save}>Save display settings <Check size={17}/></button></div></div> }
 
 createRoot(document.getElementById('root')).render(<App />);
