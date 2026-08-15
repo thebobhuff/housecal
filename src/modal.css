@@ -1,1 +1,2 @@
 .modal-field-gap{margin-top:16px}
+.routine-manager-list{border-top:1px solid var(--line);margin-top:4px}.routine-manager-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--line);font-size:13px}.routine-manager-row button{height:28px;width:28px;display:grid;place-items:center;color:#a36b59;border-radius:50%}.routine-manager-row button:hover{background:#f5e1d9}.routine-add-button{width:auto;margin-top:0;padding:10px 16px}

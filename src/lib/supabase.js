@@ -147,3 +147,14 @@ export async function saveHouseholdSettings(householdId, settings) {
   if (error) throw error;
   return data;
 }
+
+export async function createRoutine(householdId, title, sortOrder = 0) {
+  const { data, error } = await supabase.from('routines').insert({ household_id: householdId, title, sort_order: sortOrder }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteRoutine(routineId) {
+  const { error } = await supabase.from('routines').delete().eq('id', routineId);
+  if (error) throw error;
+}
