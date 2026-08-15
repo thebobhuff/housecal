@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowLeft, ArrowRight, Bell, CalendarDays, Check, ChevronDown, CloudSun, Droplets, ExternalLink, Image, ListChecks, LockKeyhole, MapPinned, Menu, Moon, Newspaper, Plus, RefreshCw, Settings2, Sun, UtensilsCrossed, Wind, X } from 'lucide-react';
 import './styles.css';
@@ -15,6 +15,8 @@ import './news.css';
 import './month.css';
 import './modal.css';
 import './display-fit.css';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
 import { AccessGate, SecurityLoading } from './components/AccessGate';
 import { createDisplayPairing, createHousehold, createRoutine, deleteRoutine, ensureHousecalDefaults, getCurrentSession, loadHousecalState, loadLocalNews, loadTraffic, pollGooglePhotosPicker, resolveLocation, saveHouseholdName, saveHouseholdSettings, saveMealPlan, setRoutineCompletion, signOut, startGoogleConnection, startGooglePhotosPicker, supabase, syncGoogleCalendar, validateDisplaySession } from './lib/supabase';
 
@@ -439,12 +441,47 @@ function WeatherScene({ weather, location, setToast }) {
   return <div className="weather-scene"><div className="scene-heading"><div><p className="eyebrow">OUT THE DOOR</p><h1>Know before<br/><em>you go.</em></h1><p className="subhead">Live conditions for the family’s next move.</p></div><div className="scene-date"><strong>{location.city}</strong><br/>UPDATED {current?.time ? new Date(current.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '—'}</div></div><div className="weather-layout"><section className="weather-live-card weather-scene-card panel"><div className="weather-card-top"><span><CloudSun size={18}/> LIVE WEATHER</span><button onClick={() => setToast(weather.error || `Using ${location.source === 'ip' ? 'local IP location' : 'fallback location'}; weather refreshes every 15 minutes`)} aria-label="Weather status"><RefreshCw size={15}/></button></div>{weather.loading ? <div className="weather-loading">Finding your local area…</div> : current ? <><div className="weather-temperature">{Math.round(current.temperature_2m)}°</div><h2>{weatherDescription(current.weather_code)}</h2><p>Feels like {Math.round(current.apparent_temperature)}°</p><div className="weather-metrics"><span><Droplets size={16}/> {current.relative_humidity_2m}% humidity</span><span><Wind size={16}/> {Math.round(current.wind_speed_10m)} mph wind</span></div></> : <div className="weather-loading">{weather.error || 'Weather unavailable'}</div>}</section><section className="hourly-card panel"><div className="hourly-heading"><div><p className="eyebrow">NEXT 8 HOURS</p><h2>Hourly outlook</h2></div><CloudSun size={20}/></div>{outlook.length ? <div className="hourly-list">{outlook.map((hour) => <div className="hourly-row" key={hour.time}><span className="hourly-time">{new Date(hour.time).toLocaleTimeString([], { hour: 'numeric' })}</span><span className="hourly-condition">{weatherDescription(hour.code)}</span><strong>{Math.round(hour.temperature)}°</strong><small>{hour.rain || 0}% rain</small></div>)}</div> : <div className="weather-loading">Hourly outlook unavailable</div>}</section></div><div className="weather-traffic-foot"><span><Wind size={15}/> Weather powered by Open-Meteo</span><span><MapPinned size={15}/> Location from local public IP</span></div></div>;
 }
 
-function TrafficScene({ traffic, location, setToast }) {
+function TrafficMap({ location }) {
+  const mapElement = useRef(null);
+  const mapRef = useRef(null);
+  const [mapError, setMapError] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    const createMap = async () => {
+      try {
+        const displayToken = localStorage.getItem('housecal_display_token');
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = displayToken ? `display_token=${encodeURIComponent(displayToken)}` : session?.access_token ? `access_token=${encodeURIComponent(session.access_token)}` : '';
+        if (!token || !mapElement.current || cancelled) return;
+        const map = L.map(mapElement.current, { zoomControl: false }).setView([location.latitude, location.longitude], 11);
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+        const tileBase = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/traffic-map-tile/{z}/{x}/{y}.png?${token}`;
+        L.tileLayer(tileBase, { opacity: 0.82, maxZoom: 19, attribution: 'Traffic flow &copy; TomTom' }).addTo(map);
+        L.circleMarker([location.latitude, location.longitude], { radius: 7, color: '#26322e', weight: 2, fillColor: '#f5d3a6', fillOpacity: 1 }).addTo(map).bindTooltip(location.city, { permanent: true, direction: 'top', className: 'traffic-map-label' });
+        mapRef.current = map;
+        setTimeout(() => map.invalidateSize(), 0);
+      } catch (error) { if (!cancelled) setMapError(error.message || 'Live traffic map unavailable'); }
+    };
+    createMap();
+    return () => { cancelled = true; if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; } };
+  }, [location.latitude, location.longitude, location.city]);
+  return <div className="traffic-map-wrap">{mapError ? <div className="traffic-map-error">{mapError}</div> : <div ref={mapElement} className="traffic-leaflet-map"/>}<div className="traffic-map-key"><span><i className="flow-green"></i> Moving</span><span><i className="flow-yellow"></i> Slow</span><span><i className="flow-red"></i> Congested</span></div></div>;
+}
+
+function LegacyTrafficScene({ traffic, location, setToast }) {
   const flow = traffic.data?.flow;
   const incidents = traffic.data?.incidents || [];
   const trafficMapUrl = `https://www.google.com/maps/@${location.latitude},${location.longitude},11z/data=!5m1!1e1`;
   const liveMapEmbedUrl = `https://www.google.com/maps?q=${encodeURIComponent(`${location.latitude},${location.longitude}`)}&z=11&output=embed`;
   return <div className="traffic-scene"><div className="scene-heading"><div><p className="eyebrow">ON THE ROAD</p><h1>Traffic,<br/><em>at a glance.</em></h1><p className="subhead">A fresh local snapshot every 30 minutes.</p></div><div className="scene-date"><strong>{location.city}</strong><br/>UPDATED {traffic.data?.fetched_at ? new Date(traffic.data.fetched_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '—'}</div></div>{traffic.loading ? <div className="news-state panel">Loading traffic…</div> : !traffic.configured ? <div className="news-state panel"><MapPinned size={28}/><h2>Traffic API key needed</h2><p>Add the free-tier <code>TOMTOM_API_KEY</code> Supabase secret to enable live traffic.</p></div> : <div className="traffic-dashboard"><section className="traffic-summary panel"><div className="traffic-card-top"><span><MapPinned size={18}/> LIVE TRAFFIC</span><span className="traffic-status"><i></i> 30 MIN REFRESH</span></div><div className="flow-score">{flow ? `${Math.round(flow.currentSpeed)} mph` : '—'}</div><h2>{flow?.freeFlowSpeed && flow.currentSpeed < flow.freeFlowSpeed * .7 ? 'Heavy traffic' : flow ? 'Moving well' : 'No flow data'}</h2><p>{flow?.freeFlowSpeed ? `Typical speed ${Math.round(flow.freeFlowSpeed)} mph` : 'Live road-speed data will appear when available.'}</p><a className="traffic-open-link" href={trafficMapUrl} target="_blank" rel="noreferrer">Open live map <ExternalLink size={14}/></a></section><section className="traffic-incidents panel"><div className="traffic-card-top"><span><MapPinned size={18}/> NEARBY INCIDENTS</span><span>{incidents.length} found</span></div>{incidents.length ? incidents.map((incident, index) => <div className="traffic-incident" key={`${incident.title}-${index}`}><span className="incident-dot"></span><div><strong>{incident.title}</strong><small>{incident.category}{incident.delay ? ` · delay ${incident.delay}` : ''}</small></div></div>) : <div className="traffic-empty">No active incidents reported nearby.</div>}</section><section className="traffic-live-map panel"><div className="traffic-card-top"><span><MapPinned size={18}/> LIVE MAP</span><span className="traffic-status"><i></i> GOOGLE TRAFFIC LAYER</span></div><iframe title={`Live traffic map for ${location.city}`} src={liveMapEmbedUrl} loading="lazy" referrerPolicy="no-referrer-when-downgrade" allowFullScreen></iframe></section></div>}<div className="weather-traffic-foot"><span><MapPinned size={15}/> TomTom Traffic API + Google live map</span><span>Traffic data refreshes every 30 minutes</span><button onClick={() => setToast(traffic.error || 'Traffic refreshes automatically every 30 minutes')}>Refresh status</button></div></div>;
+}
+
+function TrafficScene({ traffic, location, setToast }) {
+  const flow = traffic.data?.flow;
+  const incidents = traffic.data?.incidents || [];
+  const trafficMapUrl = `https://www.google.com/maps/@${location.latitude},${location.longitude},11z/data=!5m1!1e1`;
+  return <div className="traffic-scene"><div className="scene-heading"><div><p className="eyebrow">ON THE ROAD</p><h1>Traffic,<br/><em>at a glance.</em></h1><p className="subhead">Live TomTom flow for your saved location.</p></div><div className="scene-date"><strong>{location.city}</strong><br/>UPDATED {traffic.data?.fetched_at ? new Date(traffic.data.fetched_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '—'}</div></div>{traffic.loading ? <div className="news-state panel">Loading traffic…</div> : !traffic.configured ? <div className="news-state panel"><MapPinned size={28}/><h2>Traffic API key needed</h2><p>Add the free-tier <code>TOMTOM_API_KEY</code> Supabase secret to enable live traffic.</p></div> : <div className="traffic-dashboard"><section className="traffic-summary panel"><div className="traffic-card-top"><span><MapPinned size={18}/> LIVE TRAFFIC</span><span className="traffic-status"><i></i> 30 MIN REFRESH</span></div><div className="flow-score">{flow ? `${Math.round(flow.currentSpeed)} mph` : '—'}</div><h2>{flow?.freeFlowSpeed && flow.currentSpeed < flow.freeFlowSpeed * .7 ? 'Heavy traffic' : flow ? 'Moving well' : 'No flow data'}</h2><p>{flow?.freeFlowSpeed ? `Typical speed ${Math.round(flow.freeFlowSpeed)} mph` : 'Live road-speed data will appear when available.'}</p><a className="traffic-open-link" href={trafficMapUrl} target="_blank" rel="noreferrer">Open full traffic map <ExternalLink size={14}/></a></section><section className="traffic-incidents panel"><div className="traffic-card-top"><span><MapPinned size={18}/> NEARBY INCIDENTS</span><span>{incidents.length} found</span></div>{incidents.length ? incidents.map((incident, index) => <div className="traffic-incident" key={`${incident.title}-${index}`}><span className="incident-dot"></span><div><strong>{incident.title}</strong><small>{incident.category}{incident.delay ? ` · delay ${incident.delay}` : ''}</small></div></div>) : <div className="traffic-empty">No active incidents reported nearby.</div>}</section><section className="traffic-live-map panel"><div className="traffic-card-top"><span><MapPinned size={18}/> LIVE FLOW MAP</span><span className="traffic-status"><i></i> TOMTOM REAL-TIME</span></div><TrafficMap location={location}/></section></div>}<div className="weather-traffic-foot"><span><MapPinned size={15}/> TomTom traffic flow + incidents</span><span>Refreshes every 30 minutes</span><button onClick={() => setToast(traffic.error || 'Traffic refreshes automatically every 30 minutes')}>Refresh status</button></div></div>;
 }
 
 function NewsScene({ news, location, setToast }) {
