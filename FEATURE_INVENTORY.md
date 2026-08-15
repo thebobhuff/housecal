@@ -10,6 +10,7 @@ Updated 2026-08-14.
 - Google Photos Picker session creation, resumable polling, private Storage uploads, signed display URLs, randomized photo layouts, and night mode.
 - Playlist scenes for Calendar, Photos, Week, Routines, Weather, Traffic, and News.
 - Local news playlist scene, using a protected server-side RSS fetch for the detected city.
+- Persistent routines, daily completion records, meal plans, display timing/night settings, real month grid, and offline shell caching.
 - 1920x1080 display-first layout and automatic scene rotation.
 
 ## Partially working or still needing production verification
@@ -23,17 +24,16 @@ Updated 2026-08-14.
 ## Not implemented yet
 
 - Roku native channel. Roku requires a separate SceneGraph/BrightScript client that consumes the existing Supabase display-state endpoint.
-- Persistent meal planning and shopping lists; the current meal cards are presentation-only.
-- Persistent routines/chore assignments, household members, completion history, and notifications.
-- Month calendar view; the current control is visual and does not yet render a month grid.
-- Push/background sync and offline cache for a display that temporarily loses network access.
+- Household member management, assignments, completion history beyond today, and notifications.
+- Recipe/shopping-list management beyond the persisted meal title, subtitle, and recipe URL.
+- Push/background notifications.
 - Household settings for city, traffic destination, scene durations, photo collections, and night-mode schedule.
 
 ## Recommended build order
 
 1. Complete the production Google Photos selection/import verification.
 2. Add household settings for location, traffic destination, playlist timing, and display brightness schedule.
-3. Replace presentation-only routines and meals with Supabase tables, RLS policies, and operator controls.
-4. Add an embedded traffic provider after a Google Maps key or another traffic API is supplied.
+3. Add household member management, assignments, and notifications.
+4. Add the `TOMTOM_API_KEY` secret to activate live traffic.
 5. Package and sideload the Fire TV client, then build the Roku SceneGraph client against the same pairing/state contract.
-6. Add offline caching, background refresh, monitoring, and production smoke tests for every display platform.
+6. Add background refresh monitoring and production smoke tests for every display platform.
