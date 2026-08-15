@@ -13,6 +13,7 @@ import './weather-traffic.css';
 import './news.css';
 import './month.css';
 import './modal.css';
+import './display-fit.css';
 import { AccessGate, SecurityLoading } from './components/AccessGate';
 import { createDisplayPairing, createHousehold, createRoutine, deleteRoutine, ensureHousecalDefaults, getCurrentSession, loadHousecalState, loadLocalNews, loadTraffic, pollGooglePhotosPicker, saveHouseholdSettings, saveMealPlan, setRoutineCompletion, signOut, startGoogleConnection, startGooglePhotosPicker, supabase, syncGoogleCalendar, validateDisplaySession } from './lib/supabase';
 
