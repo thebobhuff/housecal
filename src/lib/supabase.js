@@ -158,3 +158,9 @@ export async function deleteRoutine(routineId) {
   const { error } = await supabase.from('routines').delete().eq('id', routineId);
   if (error) throw error;
 }
+
+export async function saveHouseholdName(householdId, name) {
+  const { data, error } = await supabase.rpc('update_household_name', { target_household: householdId, new_name: name });
+  if (error) throw error;
+  return data;
+}

@@ -21,6 +21,7 @@ Deno.serve(async (req) => {
       supabase.from('household_settings').select('*').eq('household_id', householdId).maybeSingle(),
     ]);
     const photoResults = await Promise.all((photos || []).filter((photo) => photo.storage_path).map(async (photo) => { const { data } = await supabase.storage.from('housecal-photos').createSignedUrl(photo.storage_path, 3600); return { ...photo, url: data?.signedUrl || null }; }));
-    return json({ household_id: householdId, events: events || [], photos: photoResults.filter((photo) => photo.url), routines: routines || [], routine_completions: completions || [], meals: meals || [], settings: settings || null });
+    const { data: household } = await supabase.from('households').select('name').eq('id', householdId).maybeSingle();
+    return json({ household_id: householdId, household_name: household?.name || 'Our family', events: events || [], photos: photoResults.filter((photo) => photo.url), routines: routines || [], routine_completions: completions || [], meals: meals || [], settings: settings || null });
   } catch (error) { return json({ error: error instanceof Error ? error.message : 'Unable to load HouseCal state' }, 401); }
 });
