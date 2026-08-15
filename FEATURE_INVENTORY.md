@@ -14,7 +14,7 @@ Updated 2026-08-14.
 ## Partially working or still needing production verification
 
 - Google Photos: the user-selection/import loop needs a real end-to-end selection and database verification in production; the app now reports expired sessions instead of silently failing.
-- Weather: live current conditions are implemented for Chicago using Open-Meteo; location settings and a household-configurable location are not implemented yet.
+- Weather: live current conditions are implemented using Open-Meteo and the display's public-IP geolocation; location settings and a household-configurable override are not implemented yet.
 - Traffic: the display now provides a live Google Maps traffic launch link and an honest placeholder surface. An embedded live map needs a Google Maps embed/API key and a configured `VITE_TRAFFIC_MAP_URL`.
 - Fire TV: the responsive web display is ready to host in Silk or wrap in a WebView APK; a packaged Fire TV APK has not been created.
 
