@@ -111,3 +111,7 @@ export async function pollGooglePhotosPicker(householdId, sessionId) {
 export async function loadHousecalState({ householdId, displayToken } = {}) {
   return invokeFunction('housecal-state', { household_id: householdId, display_token: displayToken });
 }
+
+export async function loadLocalNews({ city, householdId, displayToken } = {}) {
+  return invokeFunction('local-news', { city, household_id: householdId, display_token: displayToken });
+}

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowLeft, ArrowRight, Bell, CalendarDays, Check, ChevronDown, CloudSun, Droplets, ExternalLink, Image, ListChecks, LockKeyhole, MapPinned, Menu, Moon, Plus, RefreshCw, Settings2, Sun, UtensilsCrossed, Wind, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Bell, CalendarDays, Check, ChevronDown, CloudSun, Droplets, ExternalLink, Image, ListChecks, LockKeyhole, MapPinned, Menu, Moon, Newspaper, Plus, RefreshCw, Settings2, Sun, UtensilsCrossed, Wind, X } from 'lucide-react';
 import './styles.css';
 import './wall.css';
 import './scenes.css';
@@ -10,8 +10,9 @@ import './photo-display.css';
 import './dark-mode.css';
 import './profile.css';
 import './weather-traffic.css';
+import './news.css';
 import { AccessGate, SecurityLoading } from './components/AccessGate';
-import { createDisplayPairing, createHousehold, getCurrentSession, loadHousecalState, pollGooglePhotosPicker, signOut, startGoogleConnection, startGooglePhotosPicker, supabase, syncGoogleCalendar, validateDisplaySession } from './lib/supabase';
+import { createDisplayPairing, createHousehold, getCurrentSession, loadHousecalState, loadLocalNews, pollGooglePhotosPicker, signOut, startGoogleConnection, startGooglePhotosPicker, supabase, syncGoogleCalendar, validateDisplaySession } from './lib/supabase';
 
 const family = [
   { name: 'Everyone', color: '#6d7b70', tint: '#dfe8df' },
@@ -44,6 +45,7 @@ const scenes = [
   { label: 'Week', kicker: 'THE WEEK AHEAD' },
   { label: 'Routines', kicker: 'AROUND THE HOUSE' },
   { label: 'Weather', kicker: 'OUT THE DOOR' },
+  { label: 'News', kicker: 'LOCAL PULSE' },
 ];
 
 const fallbackLocation = { city: 'Chicago, IL', latitude: 41.8781, longitude: -87.6298, source: 'fallback' };
@@ -98,6 +100,7 @@ function App() {
   const [pairingCode, setPairingCode] = useState('');
   const [weather, setWeather] = useState({ loading: true, data: null, error: '' });
   const [weatherLocation, setWeatherLocation] = useState(fallbackLocation);
+  const [news, setNews] = useState({ loading: true, articles: [], error: '' });
   const currentWeek = getWeekDays();
   const todayKey = new Date().toLocaleDateString('en-CA');
 
@@ -146,6 +149,20 @@ function App() {
     });
     return () => { mounted = false; authListener.subscription.unsubscribe(); };
   }, []);
+
+  useEffect(() => {
+    if (!weatherLocation.city || (!access.household?.id && !access.display)) return undefined;
+    let cancelled = false;
+    const loadNews = async () => {
+      try {
+        const result = await loadLocalNews({ city: weatherLocation.city, householdId: access.household?.id, displayToken: access.display ? localStorage.getItem('housecal_display_token') : undefined });
+        if (!cancelled) setNews({ loading: false, articles: result.articles || [], error: '' });
+      } catch (error) { if (!cancelled) setNews({ loading: false, articles: [], error: error.message || 'Local news unavailable' }); }
+    };
+    loadNews();
+    const timer = setInterval(loadNews, 30 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [access.display, access.household?.id, weatherLocation.city]);
 
   useEffect(() => {
     const updateNightMode = () => setNightMode(isNighttime());
@@ -272,6 +289,7 @@ function App() {
       {scene === 2 && <WeekScene events={events} family={family} week={currentWeek}/>}
       {scene === 3 && <RoutinesScene done={done} completeChore={completeChore} setToast={setToast}/>} 
       {scene === 4 && <WeatherTrafficScene weather={weather} location={weatherLocation} setToast={setToast}/>}
+      {scene === 5 && <NewsScene news={news} location={weatherLocation} setToast={setToast}/>}
       <SceneDock scene={scene} setScene={setScene}/>
     </main>
     {showModal && <AddEventModal onClose={() => setShowModal(false)} onAdd={addEvent}/>} {pairingCode && <PairingModal code={pairingCode} onClose={() => setPairingCode('')}/>} {toast && <div className="toast">{toast}{photosPickerUrl && <a href={photosPickerUrl} target="_blank" rel="noreferrer" onClick={() => setPhotosPickerUrl('')}>Open Google Photos</a>}</div>}
@@ -318,6 +336,10 @@ function WeatherTrafficScene({ weather, location, setToast }) {
   const current = weather.data;
   const trafficMapUrl = import.meta.env.VITE_TRAFFIC_MAP_URL || `https://www.google.com/maps/@${location.latitude},${location.longitude},11z/data=!5m1!1e1`;
   return <div className="weather-traffic-scene"><div className="scene-heading"><div><p className="eyebrow">OUT THE DOOR</p><h1>Know before<br/><em>you go.</em></h1><p className="subhead">Live conditions for the family’s next move.</p></div><div className="scene-date"><strong>{location.city}</strong><br/>UPDATED {current?.time ? new Date(current.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '—'}</div></div><div className="weather-traffic-grid"><section className="weather-live-card panel"><div className="weather-card-top"><span><CloudSun size={18}/> LIVE WEATHER</span><button onClick={() => setToast(weather.error || `Using ${location.source === 'ip' ? 'local IP location' : 'fallback location'}; weather refreshes every 15 minutes`)} aria-label="Weather status"><RefreshCw size={15}/></button></div>{weather.loading ? <div className="weather-loading">Finding your local area…</div> : current ? <><div className="weather-temperature">{Math.round(current.temperature_2m)}°</div><h2>{weatherDescription(current.weather_code)}</h2><p>Feels like {Math.round(current.apparent_temperature)}°</p><div className="weather-metrics"><span><Droplets size={16}/> {current.relative_humidity_2m}% humidity</span><span><Wind size={16}/> {Math.round(current.wind_speed_10m)} mph wind</span></div></> : <div className="weather-loading">{weather.error || 'Weather unavailable'}</div>}</section><section className="traffic-card panel"><div className="traffic-card-top"><span><MapPinned size={18}/> TRAFFIC MAP</span><span className="traffic-status"><i></i> Live in Google Maps</span></div><div className="traffic-map-placeholder"><div className="map-road map-road-a"></div><div className="map-road map-road-b"></div><div className="map-road map-road-c"></div><div className="map-pin"><MapPinned size={28}/><span>{location.city}</span></div><div className="map-overlay"><strong>Plan the drive</strong><small>Open the live traffic layer for current routes and delays.</small><a href={trafficMapUrl} target="_blank" rel="noreferrer">Open traffic map <ExternalLink size={14}/></a></div></div></section></div><div className="weather-traffic-foot"><span><Wind size={15}/> Weather powered by Open-Meteo</span><span><MapPinned size={15}/> Location from local public IP</span></div></div>;
+}
+
+function NewsScene({ news, location, setToast }) {
+  return <div className="news-scene"><div className="scene-heading"><div><p className="eyebrow">LOCAL PULSE</p><h1>What’s happening<br/><em>nearby.</em></h1><p className="subhead">A calm, glanceable briefing for {location.city}.</p></div><div className="scene-date"><strong>{location.city}</strong><br/>REFRESHES EVERY 30 MIN</div></div>{news.loading ? <div className="news-state panel">Loading local headlines…</div> : news.error ? <div className="news-state panel">{news.error}</div> : news.articles.length ? <div className="news-grid">{news.articles.map((article, index) => <a className="news-card panel" href={article.link} target="_blank" rel="noreferrer" key={`${article.link}-${index}`}><div className="news-card-top"><span><Newspaper size={16}/> {article.source}</span><ExternalLink size={14}/></div><h2>{article.title}</h2><time>{article.published_at ? new Date(article.published_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Latest'}</time></a>)}</div> : <div className="news-state panel">No local headlines are available right now. <button onClick={() => setToast('Local news will retry on the next refresh')}>Try again later</button></div>}<div className="news-foot"><Newspaper size={15}/> Headlines are provided by Google News RSS and open at the original source.</div></div>;
 }
 
 function WeekScene({ events, family, week }) { return <div className="week-scene"><div className="scene-heading"><div><p className="eyebrow">THE WEEK AHEAD</p><h1>Everyone, everywhere.</h1><p className="subhead">A simple view of the next seven days.</p></div><div className="scene-date">{formatWeekRange(week).split('\n').map((line) => <React.Fragment key={line}>{line}<br/></React.Fragment>)}</div></div><div className="week-board">{week.map((day) => { const dayEvents = events.filter((event) => event.dayKey === day.iso); return <div className={`week-column ${day.active ? 'today' : ''}`} key={day.iso}><div className="week-column-head">{day.day} {day.date}</div>{dayEvents.length ? dayEvents.map((event) => <div className="week-event" key={event.id} style={{ borderLeftColor: event.color }}><strong>{event.time}</strong><span>{event.title}</span><small>{event.person}</small></div>) : <div className="week-empty">No plans yet</div>}</div>; })}</div><div className="scene-legend">{family.slice(1).map((person) => <span key={person.name}><i style={{ background: person.color }}></i>{person.name}</span>)}<span className="week-sync"><span className="sync-dot"></span> Google Calendar synced</span></div></div> }
