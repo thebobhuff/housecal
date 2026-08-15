@@ -15,6 +15,7 @@ import './news.css';
 import './month.css';
 import './modal.css';
 import './display-fit.css';
+import './playlist-overlay.css';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { AccessGate, SecurityLoading } from './components/AccessGate';
