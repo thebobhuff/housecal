@@ -9,12 +9,14 @@ Updated 2026-08-14.
 - Google Calendar OAuth, calendar sync, all-day event handling, local date/time rendering, and profile photo display.
 - Google Photos Picker session creation, resumable polling, private Storage uploads, signed display URLs, randomized photo layouts, and night mode.
 - Playlist scenes for Calendar, Photos, Week, Routines, and Weather.
+- Local news playlist scene, using a protected server-side RSS fetch for the detected city.
 - 1920x1080 display-first layout and automatic scene rotation.
 
 ## Partially working or still needing production verification
 
 - Google Photos: the user-selection/import loop needs a real end-to-end selection and database verification in production; the app now reports expired sessions instead of silently failing.
 - Weather: live current conditions are implemented using Open-Meteo and the display's public-IP geolocation; location settings and a household-configurable override are not implemented yet.
+- Local news: headline retrieval is implemented through the secured `local-news` Edge Function; source availability and city-level relevance depend on the upstream Google News RSS feed.
 - Traffic: the display now provides a live Google Maps traffic launch link and an honest placeholder surface. An embedded live map needs a Google Maps embed/API key and a configured `VITE_TRAFFIC_MAP_URL`.
 - Fire TV: the responsive web display is ready to host in Silk or wrap in a WebView APK; a packaged Fire TV APK has not been created.
 
