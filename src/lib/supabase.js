@@ -115,3 +115,7 @@ export async function loadHousecalState({ householdId, displayToken } = {}) {
 export async function loadLocalNews({ city, householdId, displayToken } = {}) {
   return invokeFunction('local-news', { city, household_id: householdId, display_token: displayToken });
 }
+
+export async function loadTraffic({ latitude, longitude, householdId, displayToken } = {}) {
+  return invokeFunction('traffic', { latitude, longitude, household_id: householdId, display_token: displayToken });
+}
