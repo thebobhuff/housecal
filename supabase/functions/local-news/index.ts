@@ -42,18 +42,23 @@ Deno.serve(async (req) => {
     const { supabase } = await resolveHousehold(req, body.household_id, body.display_token);
     const cityKey = city.toLocaleLowerCase();
     const { data: cached } = await supabase.from('local_news_cache').select('city_label, articles, fetched_at, expires_at').eq('city_key', cityKey).maybeSingle();
-    if (cached && new Date(cached.expires_at).getTime() > Date.now()) {
-      return json({ city: cached.city_label, articles: recentArticles(cached.articles || []), fetched_at: cached.fetched_at, cached: true });
+    const cachedArticles = recentArticles(cached?.articles || []);
+    if (cached && new Date(cached.expires_at).getTime() > Date.now() && cachedArticles.length) {
+      return json({ city: cached.city_label, articles: cachedArticles, fetched_at: cached.fetched_at, cached: true });
     }
-    const feedUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(`${city} local news`)}&hl=en-US&gl=US&ceid=US:en`;
     try {
-      const response = await fetch(feedUrl, { headers: { 'User-Agent': 'HouseCal/1.0 local-news-feed' } });
-      if (!response.ok) throw new Error('Local news service unavailable');
-      const xml = await response.text();
-      const articles = recentArticles([...xml.matchAll(/<item>([\s\S]*?)<\/item>/gi)].slice(0, 20).map((match) => {
+      const queries = [`${city} when:2d`, `${city} local news when:2d`];
+      const feedResults = await Promise.all(queries.map(async (query) => {
+        const feedUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`;
+        const response = await fetch(feedUrl, { headers: { 'User-Agent': 'HouseCal/1.0 local-news-feed' } });
+        if (!response.ok) throw new Error('Local news service unavailable');
+        return response.text();
+      }));
+      const articles = recentArticles(feedResults.flatMap((xml) => [...xml.matchAll(/<item>([\s\S]*?)<\/item>/gi)].map((match) => {
         const item = match[1];
         return { title: readTag(item, 'title'), link: readTag(item, 'link'), published_at: readTag(item, 'pubDate'), source: readTag(item, 'source') || 'Local news' };
-      }).filter((article) => article.title && article.link)).slice(0, 8);
+      })).filter((article) => article.title && article.link).filter((article, index, all) => all.findIndex((candidate) => candidate.link === article.link) === index).sort((a, b) => Date.parse(b.published_at) - Date.parse(a.published_at))).slice(0, 8);
+      if (!articles.length && cachedArticles.length) return json({ city: cached.city_label, articles: cachedArticles, fetched_at: cached.fetched_at, cached: true });
       const fetchedAt = new Date();
       const expiresAt = new Date(fetchedAt.getTime() + 30 * 60 * 1000);
       const { error: cacheError } = await supabase.from('local_news_cache').upsert({ city_key: cityKey, city_label: city, articles, fetched_at: fetchedAt.toISOString(), expires_at: expiresAt.toISOString(), updated_at: fetchedAt.toISOString() });

@@ -116,6 +116,20 @@ export async function loadLocalNews({ city, householdId, displayToken } = {}) {
   return invokeFunction('local-news', { city, household_id: householdId, display_token: displayToken });
 }
 
+export async function resolveLocation(query) {
+  const params = new URLSearchParams({ name: query, count: '1', language: 'en', format: 'json' });
+  const response = await fetch(`https://geocoding-api.open-meteo.com/v1/search?${params}`);
+  if (!response.ok) throw new Error('Location lookup unavailable');
+  const payload = await response.json();
+  const result = payload.results?.[0];
+  if (!result || !Number.isFinite(result.latitude) || !Number.isFinite(result.longitude)) throw new Error('Location not found. Try a city, state, or ZIP code.');
+  return {
+    location_label: [result.name, result.admin1, result.country_code === 'US' ? '' : result.country].filter(Boolean).join(', '),
+    latitude: result.latitude,
+    longitude: result.longitude,
+  };
+}
+
 export async function loadTraffic({ latitude, longitude, householdId, displayToken } = {}) {
   return invokeFunction('traffic', { latitude, longitude, household_id: householdId, display_token: displayToken });
 }
