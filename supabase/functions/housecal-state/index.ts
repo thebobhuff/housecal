@@ -19,7 +19,7 @@ Deno.serve(async (req) => {
       supabase.from('routine_completions').select('routine_id,completed_on').eq('completed_on', new Date().toISOString().slice(0, 10)),
       supabase.from('meal_plans').select('*').eq('household_id', householdId).order('meal_date').limit(14),
       supabase.from('household_settings').select('*').eq('household_id', householdId).maybeSingle(),
-      supabase.from('household_people').select('*').eq('household_id', householdId).eq('show_on_display', true).order('created_at'),
+      body.display_token ? supabase.from('household_people').select('*').eq('household_id', householdId).eq('show_on_display', true).order('created_at') : supabase.from('household_people').select('*').eq('household_id', householdId).order('created_at'),
     ]);
     const photoResults = await Promise.all((photos || []).filter((photo) => photo.storage_path).map(async (photo) => { const { data } = await supabase.storage.from('housecal-photos').createSignedUrl(photo.storage_path, 3600); return { ...photo, url: data?.signedUrl || null }; }));
     const { data: household } = await supabase.from('households').select('name').eq('id', householdId).maybeSingle();

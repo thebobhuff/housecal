@@ -125,6 +125,7 @@ function App() {
   const [settings, setSettings] = useState({ scene_duration_seconds: 12, night_start_hour: 20, night_end_hour: 7, scene_enabled: defaultSceneEnabled, location_label: '', latitude: null, longitude: null });
   const [familyName, setFamilyName] = useState('Our family');
   const [people, setPeople] = useState(family);
+  const [peopleDirectory, setPeopleDirectory] = useState(family);
   const [showFamilyManager, setShowFamilyManager] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const currentWeek = getWeekDays();
@@ -156,7 +157,7 @@ function App() {
           if (liveState?.routine_completions?.length) setDone((liveState.routine_completions || []).map((item) => liveState.routines?.find((routine) => routine.id === item.routine_id)?.title).filter(Boolean));
           if (liveState?.meals?.length) setMealPlan(liveState.meals[0]);
           if (liveState?.settings) setSettings((current) => ({ ...current, ...liveState.settings, scene_enabled: { ...defaultSceneEnabled, ...(liveState.settings.scene_enabled || {}) } }));
-          if (liveState?.people?.length) setPeople(liveState.people);
+          if (liveState?.people?.length) { setPeopleDirectory(liveState.people); setPeople(liveState.people.filter((person) => person.show_on_display !== false)); }
           writeCachedState(household.id, liveState);
         } catch { const cached = readCachedState(household.id); if (cached?.events?.length) setEvents(cached.events.map(toDisplayEvent)); if (cached?.photos?.length) setPhotos(cached.photos.map((photo) => photo.url)); if (cached?.routines?.length) setRoutines(cached.routines); if (cached?.meals?.length) setMealPlan(cached.meals[0]); setToast(cached ? 'Using the last saved family update' : 'Family data is temporarily unavailable'); }
         const { data: profile } = await supabase.from('google_connections').select('profile_picture_url').eq('household_id', household.id).not('profile_picture_url', 'is', null).limit(1).maybeSingle();
@@ -178,7 +179,7 @@ function App() {
           if (liveState?.routine_completions?.length) setDone((liveState.routine_completions || []).map((item) => liveState.routines?.find((routine) => routine.id === item.routine_id)?.title).filter(Boolean));
           if (liveState?.meals?.length) setMealPlan(liveState.meals[0]);
           if (liveState?.household_name) setFamilyName(liveState.household_name);
-          if (liveState?.people?.length) setPeople(liveState.people);
+          if (liveState?.people?.length) setPeople(liveState.people.filter((person) => person.show_on_display !== false));
           if (liveState?.settings) setSettings((current) => ({ ...current, ...liveState.settings, scene_enabled: { ...defaultSceneEnabled, ...(liveState.settings.scene_enabled || {}) } }));
           writeCachedState(liveState.household_id || display.household_id, liveState);
         } catch { const cached = display?.household_id ? readCachedState(display.household_id) : null; if (cached?.events?.length) setEvents(cached.events.map(toDisplayEvent)); if (cached?.photos?.length) setPhotos(cached.photos.map((photo) => photo.url)); if (cached?.routines?.length) setRoutines(cached.routines); if (cached?.meals?.length) setMealPlan(cached.meals[0]); setToast(cached ? 'Using the last saved family update' : 'Display data is temporarily unavailable'); }
@@ -371,7 +372,7 @@ function App() {
       {scene === 5 && <NewsScene news={news} location={weatherLocation} setToast={setToast}/>}
       <SceneDock scene={scene} setScene={setScene} sceneEnabled={settings.scene_enabled}/>
     </main>
-    {showModal && <AddEventModal onClose={() => setShowModal(false)} onAdd={addEvent}/>} {showMealModal && <MealModal householdId={access.household?.id} meal={mealPlan} onClose={() => setShowMealModal(false)} onSaved={(meal) => { setMealPlan(meal); setShowMealModal(false); setToast('Meal plan saved'); }}/>} {showSettings && <SettingsModal householdId={access.household?.id} householdName={familyName} settings={settings} onClose={() => setShowSettings(false)} onSaved={(next, name) => { setSettings(next); setFamilyName(name); setShowSettings(false); setToast('Family settings saved'); }}/>} {showFamilyManager && <FamilyManagerModal householdId={access.household?.id} people={people} onClose={() => setShowFamilyManager(false)} onSaved={(next) => { setPeople(next.filter((person) => person.show_on_display !== false)); setShowFamilyManager(false); setToast('Family members saved'); }}/>} {showRoutineManager && <RoutineManagerModal householdId={access.household?.id} routines={routines} onClose={() => setShowRoutineManager(false)} onChanged={setRoutines}/>} {pairingCode && <PairingModal code={pairingCode} onClose={() => setPairingCode('')}/>} {toast && <div className="toast">{toast}{photosPickerUrl && <a href={photosPickerUrl} target="_blank" rel="noreferrer" onClick={() => setPhotosPickerUrl('')}>Open Google Photos</a>}</div>}
+    {showModal && <AddEventModal onClose={() => setShowModal(false)} onAdd={addEvent}/>} {showMealModal && <MealModal householdId={access.household?.id} meal={mealPlan} onClose={() => setShowMealModal(false)} onSaved={(meal) => { setMealPlan(meal); setShowMealModal(false); setToast('Meal plan saved'); }}/>} {showSettings && <SettingsModal householdId={access.household?.id} householdName={familyName} settings={settings} onClose={() => setShowSettings(false)} onSaved={(next, name) => { setSettings(next); setFamilyName(name); setShowSettings(false); setToast('Family settings saved'); }}/>} {showFamilyManager && <FamilyManagerModal householdId={access.household?.id} people={peopleDirectory} onClose={() => setShowFamilyManager(false)} onSaved={(next) => { setPeopleDirectory(next); setPeople(next.filter((person) => person.show_on_display !== false)); setShowFamilyManager(false); setToast('Family members saved'); }}/>} {showRoutineManager && <RoutineManagerModal householdId={access.household?.id} routines={routines} onClose={() => setShowRoutineManager(false)} onChanged={setRoutines}/>} {pairingCode && <PairingModal code={pairingCode} onClose={() => setPairingCode('')}/>} {toast && <div className="toast">{toast}{photosPickerUrl && <a href={photosPickerUrl} target="_blank" rel="noreferrer" onClick={() => setPhotosPickerUrl('')}>Open Google Photos</a>}</div>}
   </div>;
 }
 
