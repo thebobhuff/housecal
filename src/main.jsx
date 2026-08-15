@@ -46,8 +46,7 @@ const scenes = [
   { label: 'Weather', kicker: 'OUT THE DOOR' },
 ];
 
-const weatherLocation = { city: 'Chicago, IL', latitude: 41.8781, longitude: -87.6298 };
-const trafficMapUrl = import.meta.env.VITE_TRAFFIC_MAP_URL || 'https://www.google.com/maps/@41.8781,-87.6298,11z/data=!5m1!1e1';
+const fallbackLocation = { city: 'Chicago, IL', latitude: 41.8781, longitude: -87.6298, source: 'fallback' };
 
 function weatherDescription(code) {
   if (code === 0) return 'Clear sky';
@@ -98,6 +97,7 @@ function App() {
   const [scene, setScene] = useState(0);
   const [pairingCode, setPairingCode] = useState('');
   const [weather, setWeather] = useState({ loading: true, data: null, error: '' });
+  const [weatherLocation, setWeatherLocation] = useState(fallbackLocation);
   const currentWeek = getWeekDays();
   const todayKey = new Date().toLocaleDateString('en-CA');
 
@@ -158,7 +158,11 @@ function App() {
     let cancelled = false;
     const loadWeather = async () => {
       try {
-        const params = new URLSearchParams({ latitude: String(weatherLocation.latitude), longitude: String(weatherLocation.longitude), current: 'temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m', temperature_unit: 'fahrenheit', wind_speed_unit: 'mph', timezone: 'auto' });
+        const ipResponse = await fetch('https://ipwho.is/');
+        const ipLocation = ipResponse.ok ? await ipResponse.json() : null;
+        const location = ipLocation?.success && Number.isFinite(ipLocation.latitude) && Number.isFinite(ipLocation.longitude) ? { city: [ipLocation.city, ipLocation.region_code || ipLocation.region].filter(Boolean).join(', '), latitude: ipLocation.latitude, longitude: ipLocation.longitude, source: 'ip' } : fallbackLocation;
+        if (!cancelled) setWeatherLocation(location);
+        const params = new URLSearchParams({ latitude: String(location.latitude), longitude: String(location.longitude), current: 'temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m', temperature_unit: 'fahrenheit', wind_speed_unit: 'mph', timezone: 'auto' });
         const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
         if (!response.ok) throw new Error('Weather service unavailable');
         const payload = await response.json();
@@ -267,7 +271,7 @@ function App() {
       {scene === 1 && <PhotoScene setToast={setToast} photos={photos} openPhotosPicker={openPhotosPicker}/>}
       {scene === 2 && <WeekScene events={events} family={family} week={currentWeek}/>}
       {scene === 3 && <RoutinesScene done={done} completeChore={completeChore} setToast={setToast}/>} 
-      {scene === 4 && <WeatherTrafficScene weather={weather} setToast={setToast}/>}
+      {scene === 4 && <WeatherTrafficScene weather={weather} location={weatherLocation} setToast={setToast}/>}
       <SceneDock scene={scene} setScene={setScene}/>
     </main>
     {showModal && <AddEventModal onClose={() => setShowModal(false)} onAdd={addEvent}/>} {pairingCode && <PairingModal code={pairingCode} onClose={() => setPairingCode('')}/>} {toast && <div className="toast">{toast}{photosPickerUrl && <a href={photosPickerUrl} target="_blank" rel="noreferrer" onClick={() => setPhotosPickerUrl('')}>Open Google Photos</a>}</div>}
@@ -310,9 +314,10 @@ function PhotoScene({ setToast, photos, openPhotosPicker }) {
   </div>;
 }
 
-function WeatherTrafficScene({ weather, setToast }) {
+function WeatherTrafficScene({ weather, location, setToast }) {
   const current = weather.data;
-  return <div className="weather-traffic-scene"><div className="scene-heading"><div><p className="eyebrow">OUT THE DOOR</p><h1>Know before<br/><em>you go.</em></h1><p className="subhead">Live conditions for the family’s next move.</p></div><div className="scene-date"><strong>{weatherLocation.city}</strong><br/>UPDATED {current?.time ? new Date(current.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '—'}</div></div><div className="weather-traffic-grid"><section className="weather-live-card panel"><div className="weather-card-top"><span><CloudSun size={18}/> LIVE WEATHER</span><button onClick={() => setToast(weather.error || 'Weather refreshes every 15 minutes')} aria-label="Weather status"><RefreshCw size={15}/></button></div>{weather.loading ? <div className="weather-loading">Loading current conditions…</div> : current ? <><div className="weather-temperature">{Math.round(current.temperature_2m)}°</div><h2>{weatherDescription(current.weather_code)}</h2><p>Feels like {Math.round(current.apparent_temperature)}°</p><div className="weather-metrics"><span><Droplets size={16}/> {current.relative_humidity_2m}% humidity</span><span><Wind size={16}/> {Math.round(current.wind_speed_10m)} mph wind</span></div></> : <div className="weather-loading">{weather.error || 'Weather unavailable'}</div>}</section><section className="traffic-card panel"><div className="traffic-card-top"><span><MapPinned size={18}/> TRAFFIC MAP</span><span className="traffic-status"><i></i> Live in Google Maps</span></div><div className="traffic-map-placeholder"><div className="map-road map-road-a"></div><div className="map-road map-road-b"></div><div className="map-road map-road-c"></div><div className="map-pin"><MapPinned size={28}/><span>Chicago</span></div><div className="map-overlay"><strong>Plan the drive</strong><small>Open the live traffic layer for current routes and delays.</small><a href={trafficMapUrl} target="_blank" rel="noreferrer">Open traffic map <ExternalLink size={14}/></a></div></div></section></div><div className="weather-traffic-foot"><span><Wind size={15}/> Weather powered by Open-Meteo</span><span><MapPinned size={15}/> Traffic opens the live Google Maps layer</span></div></div>;
+  const trafficMapUrl = import.meta.env.VITE_TRAFFIC_MAP_URL || `https://www.google.com/maps/@${location.latitude},${location.longitude},11z/data=!5m1!1e1`;
+  return <div className="weather-traffic-scene"><div className="scene-heading"><div><p className="eyebrow">OUT THE DOOR</p><h1>Know before<br/><em>you go.</em></h1><p className="subhead">Live conditions for the family’s next move.</p></div><div className="scene-date"><strong>{location.city}</strong><br/>UPDATED {current?.time ? new Date(current.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '—'}</div></div><div className="weather-traffic-grid"><section className="weather-live-card panel"><div className="weather-card-top"><span><CloudSun size={18}/> LIVE WEATHER</span><button onClick={() => setToast(weather.error || `Using ${location.source === 'ip' ? 'local IP location' : 'fallback location'}; weather refreshes every 15 minutes`)} aria-label="Weather status"><RefreshCw size={15}/></button></div>{weather.loading ? <div className="weather-loading">Finding your local area…</div> : current ? <><div className="weather-temperature">{Math.round(current.temperature_2m)}°</div><h2>{weatherDescription(current.weather_code)}</h2><p>Feels like {Math.round(current.apparent_temperature)}°</p><div className="weather-metrics"><span><Droplets size={16}/> {current.relative_humidity_2m}% humidity</span><span><Wind size={16}/> {Math.round(current.wind_speed_10m)} mph wind</span></div></> : <div className="weather-loading">{weather.error || 'Weather unavailable'}</div>}</section><section className="traffic-card panel"><div className="traffic-card-top"><span><MapPinned size={18}/> TRAFFIC MAP</span><span className="traffic-status"><i></i> Live in Google Maps</span></div><div className="traffic-map-placeholder"><div className="map-road map-road-a"></div><div className="map-road map-road-b"></div><div className="map-road map-road-c"></div><div className="map-pin"><MapPinned size={28}/><span>{location.city}</span></div><div className="map-overlay"><strong>Plan the drive</strong><small>Open the live traffic layer for current routes and delays.</small><a href={trafficMapUrl} target="_blank" rel="noreferrer">Open traffic map <ExternalLink size={14}/></a></div></div></section></div><div className="weather-traffic-foot"><span><Wind size={15}/> Weather powered by Open-Meteo</span><span><MapPinned size={15}/> Location from local public IP</span></div></div>;
 }
 
 function WeekScene({ events, family, week }) { return <div className="week-scene"><div className="scene-heading"><div><p className="eyebrow">THE WEEK AHEAD</p><h1>Everyone, everywhere.</h1><p className="subhead">A simple view of the next seven days.</p></div><div className="scene-date">{formatWeekRange(week).split('\n').map((line) => <React.Fragment key={line}>{line}<br/></React.Fragment>)}</div></div><div className="week-board">{week.map((day) => { const dayEvents = events.filter((event) => event.dayKey === day.iso); return <div className={`week-column ${day.active ? 'today' : ''}`} key={day.iso}><div className="week-column-head">{day.day} {day.date}</div>{dayEvents.length ? dayEvents.map((event) => <div className="week-event" key={event.id} style={{ borderLeftColor: event.color }}><strong>{event.time}</strong><span>{event.title}</span><small>{event.person}</small></div>) : <div className="week-empty">No plans yet</div>}</div>; })}</div><div className="scene-legend">{family.slice(1).map((person) => <span key={person.name}><i style={{ background: person.color }}></i>{person.name}</span>)}<span className="week-sync"><span className="sync-dot"></span> Google Calendar synced</span></div></div> }
