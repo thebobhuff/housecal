@@ -1,0 +1,10 @@
+{
+  "name": "HouseCal Family Display",
+  "short_name": "HouseCal",
+  "start_url": "/",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#f5f1e8",
+  "theme_color": "#26322e",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
