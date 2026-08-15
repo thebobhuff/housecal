@@ -49,7 +49,6 @@ const scenes = [
   { label: 'Calendar', kicker: 'YOUR DAY' },
   { label: 'Photos', kicker: 'FAMILY FRAME' },
   { label: 'Week', kicker: 'THE WEEK AHEAD' },
-  { label: 'Routines', kicker: 'AROUND THE HOUSE' },
   { label: 'Weather', kicker: 'OUT THE DOOR' },
   { label: 'Traffic', kicker: 'ON THE ROAD' },
   { label: 'News', kicker: 'LOCAL PULSE' },
@@ -363,10 +362,9 @@ function App() {
         todayLabel={formatToday()} familyName={familyName} filteredEvents={filteredEvents} photos={photos} setShowModal={setShowModal} setToast={setToast} openPhotosPicker={openPhotosPicker} done={done} routines={routines} completeChore={completeChore} editable={Boolean(access.session)} currentTime={currentTime} weather={weather} location={weatherLocation}/>}
       {scene === 1 && <PhotoScene setToast={setToast} photos={photos} openPhotosPicker={openPhotosPicker}/>}
       {scene === 2 && <WeekScene events={events} family={family} week={currentWeek}/>}
-      {scene === 3 && <RoutinesScene done={done} routines={routines} mealPlan={mealPlan} setShowMealModal={setShowMealModal} completeChore={completeChore} setToast={setToast} editable={Boolean(access.session)}/>}
-      {scene === 4 && <WeatherScene weather={weather} location={weatherLocation} setToast={setToast}/>}
-      {scene === 5 && <TrafficScene traffic={traffic} location={weatherLocation} setToast={setToast}/>}
-      {scene === 6 && <NewsScene news={news} location={weatherLocation} setToast={setToast}/>}
+      {scene === 3 && <WeatherScene weather={weather} location={weatherLocation} setToast={setToast}/>}
+      {scene === 4 && <TrafficScene traffic={traffic} location={weatherLocation} setToast={setToast}/>}
+      {scene === 5 && <NewsScene news={news} location={weatherLocation} setToast={setToast}/>}
       <SceneDock scene={scene} setScene={setScene} sceneEnabled={settings.scene_enabled}/>
     </main>
     {showModal && <AddEventModal onClose={() => setShowModal(false)} onAdd={addEvent}/>} {showMealModal && <MealModal householdId={access.household?.id} meal={mealPlan} onClose={() => setShowMealModal(false)} onSaved={(meal) => { setMealPlan(meal); setShowMealModal(false); setToast('Meal plan saved'); }}/>} {showSettings && <SettingsModal householdId={access.household?.id} householdName={familyName} settings={settings} onClose={() => setShowSettings(false)} onSaved={(next, name) => { setSettings(next); setFamilyName(name); setShowSettings(false); setToast('Family settings saved'); }}/>} {showRoutineManager && <RoutineManagerModal householdId={access.household?.id} routines={routines} onClose={() => setShowRoutineManager(false)} onChanged={setRoutines}/>} {pairingCode && <PairingModal code={pairingCode} onClose={() => setPairingCode('')}/>} {toast && <div className="toast">{toast}{photosPickerUrl && <a href={photosPickerUrl} target="_blank" rel="noreferrer" onClick={() => setPhotosPickerUrl('')}>Open Google Photos</a>}</div>}
