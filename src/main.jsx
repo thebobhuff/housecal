@@ -7,6 +7,7 @@ import './scenes.css';
 import './access.css';
 import './pairing.css';
 import './photo-display.css';
+import './photo-layouts.css';
 import './dark-mode.css';
 import './profile.css';
 import './weather-traffic.css';
@@ -393,12 +394,12 @@ const photoCaptions = [
 ];
 
 function PhotoScene({ setToast, photos, openPhotosPicker }) {
-  const [layout, setLayout] = useState(() => Math.floor(Math.random() * 4));
+  const [layout, setLayout] = useState(() => Math.floor(Math.random() * 7));
   const [imageIndex, setImageIndex] = useState(() => Math.floor(Math.random() * photoImages.length));
   const [captionIndex, setCaptionIndex] = useState(() => Math.floor(Math.random() * photoCaptions.length));
   useEffect(() => {
     const timer = setInterval(() => {
-      setLayout(Math.floor(Math.random() * 4));
+      setLayout(Math.floor(Math.random() * 7));
       setImageIndex(Math.floor(Math.random() * photoImages.length));
       setCaptionIndex(Math.floor(Math.random() * photoCaptions.length));
     }, 28000);
@@ -411,6 +412,9 @@ function PhotoScene({ setToast, photos, openPhotosPicker }) {
     <div className="photo-layer photo-layer-main" style={{ backgroundImage: `linear-gradient(90deg,#182b27a8 0%,#182b2738 45%,#182b2715 100%), url('${image}')` }}></div>
     {(layout === 1 || layout === 3) && <div className="photo-layer photo-layer-secondary" style={{ backgroundImage: `linear-gradient(160deg,#2c493b44,#17231e66), url('${secondImage}')` }}></div>}
     {layout === 2 && <div className="photo-filmstrip"><div style={{ backgroundImage: `url('${secondImage}')` }}></div><div style={{ backgroundImage: `url('${image}')` }}></div><div style={{ backgroundImage: `url('${availableImages[(imageIndex + 2) % availableImages.length]}')` }}></div></div>}
+    {layout === 4 && <div className="photo-collage"><div className="collage-large" style={{ backgroundImage: `url('${image}')` }}></div><div className="collage-small collage-small-a" style={{ backgroundImage: `url('${secondImage}')` }}></div><div className="collage-small collage-small-b" style={{ backgroundImage: `url('${availableImages[(imageIndex + 2) % availableImages.length]}')` }}></div></div>}
+    {layout === 5 && <div className="photo-scroll-gallery">{Array.from({ length: Math.min(6, availableImages.length) }, (_, index) => <div key={index} style={{ backgroundImage: `url('${availableImages[(imageIndex + index) % availableImages.length]}')` }}></div>)}</div>}
+    {layout === 6 && <div className="photo-mosaic">{Array.from({ length: 4 }, (_, index) => <div key={index} style={{ backgroundImage: `url('${availableImages[(imageIndex + index) % availableImages.length]}')` }}></div>)}</div>}
     <div className="photo-scene-overlay"><div className="photo-scene-top"><span><Image size={17}/> {photos.length ? `SELECTED PHOTOS · ${photos.length}` : 'FAMILY PHOTOS'}</span><span>68° · CHICAGO</span></div><div className="photo-scene-caption"><p>{photoCaptions[captionIndex]}</p><small>{photos.length ? 'Chosen from Google Photos' : 'Choose photos from Google Photos'}</small></div><button onClick={openPhotosPicker}>{photos.length ? 'Change photos' : 'Choose photos'} <ArrowRight size={16}/></button></div>
   </div>;
 }
