@@ -11,8 +11,9 @@ import './dark-mode.css';
 import './profile.css';
 import './weather-traffic.css';
 import './news.css';
+import './month.css';
 import { AccessGate, SecurityLoading } from './components/AccessGate';
-import { createDisplayPairing, createHousehold, getCurrentSession, loadHousecalState, loadLocalNews, loadTraffic, pollGooglePhotosPicker, signOut, startGoogleConnection, startGooglePhotosPicker, supabase, syncGoogleCalendar, validateDisplaySession } from './lib/supabase';
+import { createDisplayPairing, createHousehold, ensureHousecalDefaults, getCurrentSession, loadHousecalState, loadLocalNews, loadTraffic, pollGooglePhotosPicker, setRoutineCompletion, signOut, startGoogleConnection, startGooglePhotosPicker, supabase, syncGoogleCalendar, validateDisplaySession } from './lib/supabase';
 
 const family = [
   { name: 'Everyone', color: '#6d7b70', tint: '#dfe8df' },
@@ -94,6 +95,8 @@ function App() {
   const [showModal, setShowModal] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [done, setDone] = useState([]);
+  const [routines, setRoutines] = useState([]);
+  const [mealPlan, setMealPlan] = useState(null);
   const [toast, setToast] = useState('');
   const [photosPickerUrl, setPhotosPickerUrl] = useState('');
   const [photosSession, setPhotosSession] = useState(null);
@@ -122,10 +125,14 @@ function App() {
         }
       }
       if (household) {
+        try { await ensureHousecalDefaults(household.id); } catch { /* Keep displays usable while the content migration is being applied. */ }
         try {
           const liveState = await loadHousecalState({ householdId: household.id });
           if (liveState?.events?.length) setEvents(liveState.events.map(toDisplayEvent));
           if (liveState?.photos?.length) setPhotos(liveState.photos.map((photo) => photo.url));
+          if (liveState?.routines?.length) setRoutines(liveState.routines);
+          if (liveState?.routine_completions?.length) setDone((liveState.routine_completions || []).map((item) => liveState.routines?.find((routine) => routine.id === item.routine_id)?.title).filter(Boolean));
+          if (liveState?.meals?.length) setMealPlan(liveState.meals[0]);
         } catch { /* Keep the local preview data until the Edge Functions are deployed. */ }
         const { data: profile } = await supabase.from('google_connections').select('profile_picture_url').eq('household_id', household.id).not('profile_picture_url', 'is', null).limit(1).maybeSingle();
         if (profile?.profile_picture_url) setProfilePhoto(profile.profile_picture_url);
@@ -142,6 +149,9 @@ function App() {
           const liveState = await loadHousecalState({ displayToken: localStorage.getItem('housecal_display_token') });
           if (liveState?.events?.length) setEvents(liveState.events.map(toDisplayEvent));
           if (liveState?.photos?.length) setPhotos(liveState.photos.map((photo) => photo.url));
+          if (liveState?.routines?.length) setRoutines(liveState.routines);
+          if (liveState?.routine_completions?.length) setDone((liveState.routine_completions || []).map((item) => liveState.routines?.find((routine) => routine.id === item.routine_id)?.title).filter(Boolean));
+          if (liveState?.meals?.length) setMealPlan(liveState.meals[0]);
         } catch { /* Keep the local preview data until the Edge Functions are deployed. */ }
       }
       setAccess({ loading: false, session, display, household });
@@ -214,7 +224,12 @@ function App() {
 
   const dateFilteredEvents = useMemo(() => view === 'Today' ? events.filter((event) => event.dayKey === todayKey) : events, [events, todayKey, view]);
   const filteredEvents = useMemo(() => activeFilter === 'Everyone' ? dateFilteredEvents : dateFilteredEvents.filter((event) => event.person === activeFilter || event.person === 'Everyone'), [dateFilteredEvents, activeFilter]);
-  const completeChore = (name) => setDone((current) => current.includes(name) ? current.filter((item) => item !== name) : [...current, name]);
+  const completeChore = async (name) => {
+    const currentlyDone = done.includes(name);
+    setDone((current) => currentlyDone ? current.filter((item) => item !== name) : [...current, name]);
+    const routine = routines.find((item) => item.title === name);
+    if (access.session && routine) { try { await setRoutineCompletion(routine.id, !currentlyDone); } catch (error) { setToast(error.message || 'Routine update failed'); setDone((current) => currentlyDone ? [...current, name] : current.filter((item) => item !== name)); } }
+  };
   const addEvent = (event) => { setEvents((current) => [...current, { ...event, id: Date.now(), color: family.find((person) => person.name === event.person)?.color || '#6d7b70' }]); setShowModal(false); setToast('Added to the family calendar'); setTimeout(() => setToast(''), 2200); };
   const connectGoogle = async (provider) => {
     if (!access.session || !access.household?.id) return setToast('Parent sign-in and a household are required');
@@ -300,10 +315,10 @@ function App() {
     </header>
 
     <main className={`scene-main scene-${scene}`}>
-      {scene === 0 && <CalendarScene view={view} setView={setView} week={currentWeek} todayLabel={formatToday()} family={family} activeFilter={activeFilter} setActiveFilter={setActiveFilter} filteredEvents={filteredEvents} setShowModal={setShowModal} setToast={setToast} openPhotosPicker={openPhotosPicker} done={done} completeChore={completeChore}/>}
+      {scene === 0 && <CalendarScene view={view} setView={setView} week={currentWeek} todayLabel={formatToday()} family={family} activeFilter={activeFilter} setActiveFilter={setActiveFilter} filteredEvents={filteredEvents} events={events} setShowModal={setShowModal} setToast={setToast} openPhotosPicker={openPhotosPicker} done={done} routines={routines} completeChore={completeChore}/>}
       {scene === 1 && <PhotoScene setToast={setToast} photos={photos} openPhotosPicker={openPhotosPicker}/>}
       {scene === 2 && <WeekScene events={events} family={family} week={currentWeek}/>}
-      {scene === 3 && <RoutinesScene done={done} completeChore={completeChore} setToast={setToast}/>} 
+      {scene === 3 && <RoutinesScene done={done} routines={routines} mealPlan={mealPlan} completeChore={completeChore} setToast={setToast}/>}
       {scene === 4 && <WeatherScene weather={weather} location={weatherLocation} setToast={setToast}/>}
       {scene === 5 && <TrafficScene traffic={traffic} location={weatherLocation} setToast={setToast}/>}
       {scene === 6 && <NewsScene news={news} location={weatherLocation} setToast={setToast}/>}
@@ -313,13 +328,21 @@ function App() {
   </div>;
 }
 
-function CalendarScene({ view, setView, week, todayLabel, family, activeFilter, setActiveFilter, filteredEvents, setShowModal, setToast, openPhotosPicker, done, completeChore }) { return <div className="scene-content calendar-scene">
+function CalendarScene({ view, setView, week, todayLabel, family, activeFilter, setActiveFilter, filteredEvents, events, setShowModal, setToast, openPhotosPicker, done, routines, completeChore }) { return <div className="scene-content calendar-scene">
   <section className="welcome-row"><div><p className="eyebrow">{todayLabel.toUpperCase()}</p><h1>Good morning, family.</h1><p className="subhead">Here’s what’s happening around the house.</p></div><div className="view-switcher">{['Today', 'Week', 'Month'].map((item) => <button className={view === item ? 'selected' : ''} key={item} onClick={() => setView(item)}>{item}</button>)}</div></section>
   <section className="week-strip"><button className="week-arrow"><ArrowLeft size={18}/></button>{week.map((item) => <button key={item.date} className={`day-card ${item.active ? 'current' : ''}`} onClick={() => setToast(item.active ? 'You are viewing today' : `${item.day}, August ${item.date}`)}><span>{item.day}</span><strong>{item.date}</strong>{item.active && <i></i>}</button>)}<button className="week-arrow"><ArrowRight size={18}/></button></section>
   <div className="family-filters">{family.map((person) => <button key={person.name} className={activeFilter === person.name ? 'active' : ''} onClick={() => setActiveFilter(person.name)}><span style={{ background: person.color }}></span>{person.name}</button>)}<button className="manage-family" onClick={() => setToast('Family profiles are ready for Google account linking')}><Settings2 size={16}/> Manage family</button></div>
-  <section className="content-grid"><div className="schedule-card panel"><div className="panel-heading"><div><p className="eyebrow">TODAY AT A GLANCE</p><h2>{view === 'Today' ? todayLabel : `${view} view`}</h2></div><button className="add-button" onClick={() => setShowModal(true)}><Plus size={18}/> Add event</button></div><div className="timeline">{filteredEvents.map((event) => <div className="event-row" key={event.id}><div className="event-time">{event.time}</div><div className="event-line"><span style={{ background: event.color }}></span></div><div className="event-info"><div><h3>{event.title}</h3><p>{event.place} <span>·</span> {event.person}</p></div><div className="event-badge" style={{ color: event.color, background: `${event.color}18` }}>{event.icon === 'dinner' ? 'Dinner' : event.icon === 'ball' ? 'Activity' : 'Family'}</div></div></div>)}</div><div className="sync-row"><span className="sync-dot"></span> Synced with Google Calendar <span className="sync-time">just now</span></div></div><div className="right-column"><section className="photo-card panel"><div className="photo-content"><div className="photo-topline"><span><Image size={15}/> FAMILY PHOTOS</span><button onClick={openPhotosPicker}>View album <ArrowRight size={15}/></button></div><div className="photo-copy"><p>Little moments,<br/><em>always close by.</em></p><small>Now showing · Summer 2026</small></div><div className="photo-dots"><i></i><i className="active"></i><i></i><i></i></div></div></section><div className="small-panels"><section className="mini-card panel"><div className="mini-heading"><div className="mini-icon meal"><UtensilsCrossed size={17}/></div><div><p className="eyebrow">TONIGHT</p><h3>Dinner plan</h3></div><ChevronDown size={17}/></div><div className="meal-line"><strong>Sheet-pan salmon</strong><span>with roasted vegetables</span></div><button className="text-action" onClick={() => setToast('Meal planner opened')}>View this week <ArrowRight size={15}/></button></section><section className="mini-card panel"><div className="mini-heading"><div className="mini-icon chores"><ListChecks size={17}/></div><div><p className="eyebrow">ROUTINES</p><h3>Little wins</h3></div><span className="count">{done.length}/3</span></div>{['Pack soccer bag', 'Feed the dog', 'Put away laundry'].map((chore) => <button className={`chore ${done.includes(chore) ? 'completed' : ''}`} key={chore} onClick={() => completeChore(chore)}><span>{done.includes(chore) ? <Check size={13}/> : null}</span>{chore}<b>{done.includes(chore) ? 'Done' : 'Today'}</b></button>)}</section></div></div></section>
+  {view === 'Month' ? <MonthCalendar events={events}/> : <section className="content-grid"><div className="schedule-card panel"><div className="panel-heading"><div><p className="eyebrow">TODAY AT A GLANCE</p><h2>{view === 'Today' ? todayLabel : `${view} view`}</h2></div><button className="add-button" onClick={() => setShowModal(true)}><Plus size={18}/> Add event</button></div><div className="timeline">{filteredEvents.map((event) => <div className="event-row" key={event.id}><div className="event-time">{event.time}</div><div className="event-line"><span style={{ background: event.color }}></span></div><div className="event-info"><div><h3>{event.title}</h3><p>{event.place} <span>·</span> {event.person}</p></div><div className="event-badge" style={{ color: event.color, background: `${event.color}18` }}>{event.icon === 'dinner' ? 'Dinner' : event.icon === 'ball' ? 'Activity' : 'Family'}</div></div></div>)}</div><div className="sync-row"><span className="sync-dot"></span> Synced with Google Calendar <span className="sync-time">just now</span></div></div><div className="right-column"><section className="photo-card panel"><div className="photo-content"><div className="photo-topline"><span><Image size={15}/> FAMILY PHOTOS</span><button onClick={openPhotosPicker}>View album <ArrowRight size={15}/></button></div><div className="photo-copy"><p>Little moments,<br/><em>always close by.</em></p><small>Now showing · Summer 2026</small></div><div className="photo-dots"><i></i><i className="active"></i><i></i><i></i></div></div></section><div className="small-panels"><section className="mini-card panel"><div className="mini-heading"><div className="mini-icon meal"><UtensilsCrossed size={17}/></div><div><p className="eyebrow">TONIGHT</p><h3>Dinner plan</h3></div><ChevronDown size={17}/></div><div className="meal-line"><strong>Sheet-pan salmon</strong><span>with roasted vegetables</span></div><button className="text-action" onClick={() => setToast('Meal planner opened')}>View this week <ArrowRight size={15}/></button></section><section className="mini-card panel"><div className="mini-heading"><div className="mini-icon chores"><ListChecks size={17}/></div><div><p className="eyebrow">ROUTINES</p><h3>Little wins</h3></div><span className="count">{done.length}/{routines.length || 4}</span></div>{(routines.length ? routines : [{ title: 'Pack soccer bag' }, { title: 'Feed the dog' }, { title: 'Put away laundry' }]).map((chore) => <button className={`chore ${done.includes(chore.title) ? 'completed' : ''}`} key={chore.title} onClick={() => completeChore(chore.title)}><span>{done.includes(chore.title) ? <Check size={13}/> : null}</span>{chore.title}<b>{done.includes(chore.title) ? 'Done' : 'Today'}</b></button>)}</section></div></div></section>}
   <section className="bottom-bar"><div><LockKeyhole size={15}/> Parent mode is on</div><span>Tap the lock icon on any device to edit</span><button onClick={() => setToast('Display is set to stay awake during the day')}><CloudSun size={16}/> Display awake <span className="toggle on"><i></i></span></button></section>
 </div> }
+
+function MonthCalendar({ events }) {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const first = new Date(start); first.setDate(1 - start.getDay());
+  const days = Array.from({ length: 42 }, (_, index) => { const date = new Date(first); date.setDate(first.getDate() + index); return date; });
+  return <section className="month-calendar panel"><div className="month-heading"><div><p className="eyebrow">MONTH AT A GLANCE</p><h2>{now.toLocaleDateString([], { month: 'long', year: 'numeric' })}</h2></div><span>{events.length} synced events</span></div><div className="month-grid">{['SUN','MON','TUE','WED','THU','FRI','SAT'].map((day) => <div className="month-weekday" key={day}>{day}</div>)}{days.map((date) => { const key = date.toLocaleDateString('en-CA'); const dayEvents = events.filter((event) => event.dayKey === key); return <div className={`month-day ${date.getMonth() !== now.getMonth() ? 'muted' : ''} ${date.toDateString() === now.toDateString() ? 'today' : ''}`} key={key}><strong>{date.getDate()}</strong>{dayEvents.slice(0, 3).map((event) => <span key={event.id} style={{ borderLeftColor: event.color }}>{event.title}</span>)}</div>; })}</div></section>
+}
 
 const photoImages = [
   'https://images.unsplash.com/photo-1504150558240-0b4fd8946624?auto=format&fit=crop&w=1920&q=85',
@@ -373,7 +396,7 @@ function NewsScene({ news, location, setToast }) {
 
 function WeekScene({ events, family, week }) { return <div className="week-scene"><div className="scene-heading"><div><p className="eyebrow">THE WEEK AHEAD</p><h1>Everyone, everywhere.</h1><p className="subhead">A simple view of the next seven days.</p></div><div className="scene-date">{formatWeekRange(week).split('\n').map((line) => <React.Fragment key={line}>{line}<br/></React.Fragment>)}</div></div><div className="week-board">{week.map((day) => { const dayEvents = events.filter((event) => event.dayKey === day.iso); return <div className={`week-column ${day.active ? 'today' : ''}`} key={day.iso}><div className="week-column-head">{day.day} {day.date}</div>{dayEvents.length ? dayEvents.map((event) => <div className="week-event" key={event.id} style={{ borderLeftColor: event.color }}><strong>{event.time}</strong><span>{event.title}</span><small>{event.person}</small></div>) : <div className="week-empty">No plans yet</div>}</div>; })}</div><div className="scene-legend">{family.slice(1).map((person) => <span key={person.name}><i style={{ background: person.color }}></i>{person.name}</span>)}<span className="week-sync"><span className="sync-dot"></span> Google Calendar synced</span></div></div> }
 
-function RoutinesScene({ done, completeChore, setToast }) { const chores = ['Pack soccer bag', 'Feed the dog', 'Put away laundry', 'Water the plants']; return <div className="routines-scene"><div className="scene-heading"><div><p className="eyebrow">AROUND THE HOUSE</p><h1>Small jobs.<br/><em>Big wins.</em></h1><p className="subhead">The things that keep our home moving.</p></div><div className="routine-score"><strong>{done.length}</strong><span>of 4<br/>complete</span></div></div><div className="routine-grid"><section className="routine-card chores-board"><div className="routine-card-head"><div className="mini-icon chores"><ListChecks size={20}/></div><div><p className="eyebrow">TODAY’S ROUTINES</p><h2>Little wins</h2></div><span className="count">{done.length}/4</span></div>{chores.map((chore) => <button className={`big-chore ${done.includes(chore) ? 'completed' : ''}`} key={chore} onClick={() => completeChore(chore)}><span>{done.includes(chore) ? <Check size={17}/> : null}</span><strong>{chore}</strong><small>{done.includes(chore) ? 'Done' : 'Tap to complete'}</small></button>)}</section><section className="routine-card meal-board"><div className="routine-card-head"><div className="mini-icon meal"><UtensilsCrossed size={20}/></div><div><p className="eyebrow">TONIGHT’S PLAN</p><h2>Sheet-pan salmon</h2></div></div><div className="meal-hero"><span>DINNER · 5:45 PM</span><strong>Roasted salmon<br/>with vegetables</strong><small>Easy, colorful, and ready in 30 minutes.</small></div><button className="meal-action" onClick={() => setToast('Meal planner opened')}>View recipe & shopping list <ArrowRight size={16}/></button></section></div></div> }
+function RoutinesScene({ done, routines, mealPlan, completeChore, setToast }) { const chores = routines.length ? routines : [{ title: 'Pack soccer bag' }, { title: 'Feed the dog' }, { title: 'Put away laundry' }, { title: 'Water the plants' }]; const meal = mealPlan || { title: 'Sheet-pan salmon', subtitle: 'with roasted vegetables' }; return <div className="routines-scene"><div className="scene-heading"><div><p className="eyebrow">AROUND THE HOUSE</p><h1>Small jobs.<br/><em>Big wins.</em></h1><p className="subhead">The things that keep our home moving.</p></div><div className="routine-score"><strong>{done.length}</strong><span>of {chores.length}<br/>complete</span></div></div><div className="routine-grid"><section className="routine-card chores-board"><div className="routine-card-head"><div className="mini-icon chores"><ListChecks size={20}/></div><div><p className="eyebrow">TODAY’S ROUTINES</p><h2>Little wins</h2></div><span className="count">{done.length}/{chores.length}</span></div>{chores.map((chore) => <button className={`big-chore ${done.includes(chore.title) ? 'completed' : ''}`} key={chore.title} onClick={() => completeChore(chore.title)}><span>{done.includes(chore.title) ? <Check size={17}/> : null}</span><strong>{chore.title}</strong><small>{done.includes(chore.title) ? 'Done' : 'Tap to complete'}</small></button>)}</section><section className="routine-card meal-board"><div className="routine-card-head"><div className="mini-icon meal"><UtensilsCrossed size={20}/></div><div><p className="eyebrow">TONIGHT’S PLAN</p><h2>{meal.title}</h2></div></div><div className="meal-hero"><span>DINNER · {meal.meal_date || 'TODAY'}</span><strong>{meal.title}</strong><small>{meal.subtitle || 'Family meal plan'}</small></div><button className="meal-action" onClick={() => setToast(meal.recipe_url ? 'Opening recipe' : 'Add a recipe URL in meal settings')}>View recipe & shopping list <ArrowRight size={16}/></button></section></div></div> }
 
 function SceneDock({ scene, setScene }) { return <nav className="scene-dock" aria-label="Display scenes"><span className="scene-dock-label">PLAYLIST</span>{scenes.map((item, index) => <button key={item.label} className={scene === index ? 'active' : ''} onClick={() => setScene(index)}><i></i>{item.label}</button>)}<span className="scene-progress" style={{ '--scene-progress': `${((scene + 1) / scenes.length) * 100}%` }}></span></nav> }
 

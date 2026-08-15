@@ -119,3 +119,25 @@ export async function loadLocalNews({ city, householdId, displayToken } = {}) {
 export async function loadTraffic({ latitude, longitude, householdId, displayToken } = {}) {
   return invokeFunction('traffic', { latitude, longitude, household_id: householdId, display_token: displayToken });
 }
+
+export async function ensureHousecalDefaults(householdId) {
+  const { error } = await supabase.rpc('ensure_housecal_defaults', { target_household: householdId });
+  if (error) throw error;
+}
+
+export async function setRoutineCompletion(routineId, completed) {
+  const completedOn = new Date().toISOString().slice(0, 10);
+  if (completed) {
+    const { error } = await supabase.from('routine_completions').upsert({ routine_id: routineId, completed_on: completedOn });
+    if (error) throw error;
+  } else {
+    const { error } = await supabase.from('routine_completions').delete().eq('routine_id', routineId).eq('completed_on', completedOn);
+    if (error) throw error;
+  }
+}
+
+export async function saveMealPlan(householdId, meal) {
+  const { data, error } = await supabase.from('meal_plans').upsert({ household_id: householdId, meal_date: meal.meal_date, title: meal.title, subtitle: meal.subtitle || null, recipe_url: meal.recipe_url || null, updated_at: new Date().toISOString() }, { onConflict: 'household_id,meal_date' }).select().single();
+  if (error) throw error;
+  return data;
+}
